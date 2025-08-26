@@ -8,8 +8,8 @@ export type CookieOptions = {
 	httpOnly?: boolean;
 };
 
-export function setCookie(name: string, value: string, options?: CookieOptions) {
-	const cookieStore = cookies();
+export async function setCookie(name: string, value: string, options?: CookieOptions) {
+	const cookieStore = await cookies();
 	cookieStore.set(name, value, {
 		path: options?.path ?? "/",
 		httpOnly: options?.httpOnly ?? true,
@@ -19,13 +19,14 @@ export function setCookie(name: string, value: string, options?: CookieOptions) 
 	});
 }
 
-export function getCookie(name: string): string | undefined {
-	const cookieStore = cookies();
+export async function getCookie(name: string): Promise<string | undefined> {
+	const cookieStore = await cookies();
 	return cookieStore.get(name)?.value;
 }
 
-export function deleteCookie(name: string) {
-	cookies().delete(name);
+export async function deleteCookie(name: string) {
+	const cookieStore = await cookies();
+	cookieStore.delete(name);
 }
 
 

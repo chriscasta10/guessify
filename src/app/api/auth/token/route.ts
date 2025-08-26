@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 
 export async function GET() {
-	const cookieStore = cookies();
+	const cookieStore = await cookies();
 	const access = cookieStore.get("spotify_access_token")?.value;
 	const expStr = cookieStore.get("spotify_token_expires_at")?.value;
 	const refresh = cookieStore.get("spotify_refresh_token")?.value;

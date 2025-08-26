@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCookie } from "@/lib/cookies";
 
 export async function GET(req: NextRequest) {
-	const accessToken = getCookie("spotify_access_token");
+	const accessToken = await getCookie("spotify_access_token");
 	if (!accessToken) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
 	const url = new URL("https://api.spotify.com/v1/me/tracks");
