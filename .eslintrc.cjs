@@ -2,11 +2,13 @@
 /** @type {import('eslint').Linter.Config} */
 module.exports = {
 	root: true,
+	env: { browser: true, node: true, es2022: true },
 	overrides: [
 		{
 			files: ["**/*.{ts,tsx}"],
+			plugins: ["unused-imports", "import"],
 			extends: [
-				"next/core-web-vitals",
+				"plugin:@next/next/core-web-vitals",
 				"eslint:recommended",
 				"plugin:import/recommended",
 				"plugin:import/typescript",
