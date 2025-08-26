@@ -22,6 +22,8 @@ module.exports = {
 			"warn",
 			{ args: "none", varsIgnorePattern: "^_", ignoreRestSiblings: true },
 		],
+		"@typescript-eslint/no-explicit-any": "off",
+		"@typescript-eslint/no-namespace": "off",
 		"react/no-unescaped-entities": "off",
 		"no-console": ["warn", { allow: ["warn", "error"] }],
 	},

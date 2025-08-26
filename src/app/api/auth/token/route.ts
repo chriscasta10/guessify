@@ -26,7 +26,8 @@ export async function GET() {
 		body,
 	});
 	if (!tokenRes.ok) return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
-	const json = (await tokenRes.json()) as any;
+	type TokenJson = { access_token: string; expires_in: number; refresh_token?: string };
+	const json = (await tokenRes.json()) as TokenJson;
 	const expiresAt = Date.now() + json.expires_in * 1000 - 30_000;
 	cookieStore.set("spotify_access_token", json.access_token, { httpOnly: true, sameSite: "lax" });
 	cookieStore.set("spotify_token_expires_at", String(expiresAt), { httpOnly: true, sameSite: "lax" });

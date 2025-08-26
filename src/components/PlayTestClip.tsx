@@ -53,7 +53,7 @@ export function PlayTestClip() {
 				className="rounded border px-3 py-2"
 				onClick={() => setLevelIndex((i) => Math.min(i + 1, LEVELS.length - 1))}
 			>
-				I &apos; t know →
+				I don't know →
 			</button>
 		</div>
 	);
