@@ -3,25 +3,28 @@
 module.exports = {
 	root: true,
 	env: { browser: true, node: true, es2022: true },
-	overrides: [
-		{
-			files: ["**/*.{ts,tsx}"],
-			plugins: ["unused-imports", "import"],
-			extends: [
-				"plugin:@next/next/core-web-vitals",
-				"eslint:recommended",
-				"plugin:import/recommended",
-				"plugin:import/typescript",
-				"prettier",
-			],
-			rules: {
-				"@next/next/no-html-link-for-pages": "off",
-				"import/no-unresolved": "off",
-				"unused-imports/no-unused-imports": "error",
-				"no-console": ["warn", { allow: ["warn", "error"] }],
-			},
-		},
+	parser: "@typescript-eslint/parser",
+	plugins: ["@typescript-eslint", "import"],
+	extends: [
+		"next/core-web-vitals",
+		"eslint:recommended",
+		"plugin:@typescript-eslint/recommended",
+		"plugin:import/recommended",
+		"plugin:import/typescript",
+		"prettier",
 	],
+	rules: {
+		"@next/next/no-html-link-for-pages": "off",
+		"import/no-unresolved": "off",
+		"no-undef": "off",
+		"no-unused-vars": "off",
+		"@typescript-eslint/no-unused-vars": [
+			"warn",
+			{ args: "none", varsIgnorePattern: "^_", ignoreRestSiblings: true },
+		],
+		"react/no-unescaped-entities": "off",
+		"no-console": ["warn", { allow: ["warn", "error"] }],
+	},
 };
 
 
