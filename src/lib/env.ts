@@ -2,8 +2,8 @@ export const env = {
 	SPOTIFY_CLIENT_ID: process.env.SPOTIFY_CLIENT_ID ?? "",
 	SPOTIFY_CLIENT_SECRET: process.env.SPOTIFY_CLIENT_SECRET ?? "",
 	SPOTIFY_REDIRECT_URI:
-		process.env.SPOTIFY_REDIRECT_URI ?? "http://localhost:3000/api/auth/callback/spotify",
-	APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+		process.env.SPOTIFY_REDIRECT_URI ?? "https://guessify-4027zlpqp-christopher-castanedas-projects.vercel.app/api/auth/callback/spotify",
+	APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "https://guessify-4027zlpqp-christopher-castanedas-projects.vercel.app",
 };
 
 export function assertEnv() {
