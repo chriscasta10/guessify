@@ -33,28 +33,46 @@ export function useLikedTracks(limit = 50) {
 	}, []);
 
 	const fetchPage = useCallback(async (offset: number) => {
+		console.log("useLikedTracks: fetchPage called", { offset, limit });
 		const url = new URL("/api/liked-tracks", window.location.origin);
 		url.searchParams.set("limit", String(limit));
 		url.searchParams.set("offset", String(offset));
+		console.log("useLikedTracks: fetching from", url.toString());
+		
 		const res = await fetch(url);
-		if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-		return (await res.json()) as SpotifySavedTracksResponse;
+		console.log("useLikedTracks: response status", res.status, res.ok);
+		
+		if (!res.ok) {
+			const errorText = await res.text();
+			console.error("useLikedTracks: API error", { status: res.status, error: errorText });
+			throw new Error(`Failed to fetch: ${res.status} - ${errorText}`);
+		}
+		
+		const data = await res.json();
+		console.log("useLikedTracks: received data", { itemCount: data.items?.length, hasNext: !!data.next });
+		return data as SpotifySavedTracksResponse;
 	}, [limit]);
 
 	const loadAll = useCallback(async () => {
+		console.log("useLikedTracks: loadAll called");
 		setLoading(true);
 		setError(null);
 		try {
 			let offset = 0;
 			let all: LikedTrack[] = [];
 			while (true) {
+				console.log("useLikedTracks: fetching page at offset", offset);
 				const page = await fetchPage(offset);
-				all = all.concat(normalize(page));
+				const normalized = normalize(page);
+				console.log("useLikedTracks: normalized", normalized.length, "tracks");
+				all = all.concat(normalized);
 				if (!page.next) break;
 				offset += limit;
 			}
+			console.log("useLikedTracks: total tracks loaded", all.length);
 			setTracks(all);
 		} catch (e) {
+			console.error("useLikedTracks: error in loadAll", e);
 			setError(e instanceof Error ? e.message : "Unknown error");
 		} finally {
 			setLoading(false);
@@ -62,8 +80,9 @@ export function useLikedTracks(limit = 50) {
 	}, [fetchPage, limit, normalize]);
 
 	useEffect(() => {
-		// Lazy: caller triggers via returned loadAll
-	}, []);
+		console.log("useLikedTracks: useEffect triggered, calling loadAll");
+		loadAll();
+	}, [loadAll]);
 
 	return useMemo(
 		() => ({ tracks, loading, error, loadAll }),
