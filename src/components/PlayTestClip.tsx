@@ -55,8 +55,14 @@ export function PlayTestClip() {
 			return;
 		}
 
-		const track = tracks.find((t) => t.hasPreview) ?? tracks[0];
+		// Get a random track, prioritizing ones with preview URLs
+		const tracksWithPreview = tracks.filter(t => t.hasPreview && t.previewUrl);
+		const availableTracks = tracksWithPreview.length > 0 ? tracksWithPreview : tracks;
+		const randomIndex = Math.floor(Math.random() * availableTracks.length);
+		const track = availableTracks[randomIndex];
+		
 		console.log("Selected track:", track);
+		console.log("Track preview info:", { hasPreview: track.hasPreview, previewUrl: track.previewUrl });
 		
 		const levelMs = LEVELS[levelIndex];
 		const randomStart = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (levelMs + 3000))));
@@ -66,31 +72,31 @@ export function PlayTestClip() {
 		setAudioDebug("Starting playback...");
 
 		try {
+			// Always try Spotify SDK first (works for all tracks)
 			if (isSdkAvailable) {
 				console.log("Using Spotify SDK");
 				setAudioDebug("Connecting to Spotify SDK...");
 				
 				const connected = await connect();
 				if (!connected) {
-					setDebugInfo("Failed to connect to Spotify SDK");
-					setAudioDebug("SDK connection failed");
-					setIsPlaying(false);
+					setDebugInfo("Failed to connect to Spotify SDK, trying preview URL fallback");
+					setAudioDebug("SDK connection failed, falling back to preview");
+				} else {
+					setAudioDebug("SDK connected, seeking and playing...");
+					await seek(randomStart);
+					await play(track.uri, randomStart);
+					
+					setAudioDebug("Playing via SDK, will stop in " + (levelMs/1000) + "s");
+					setTimeout(() => {
+						void pause();
+						setIsPlaying(false);
+						setAudioDebug("SDK playback stopped");
+					}, levelMs);
 					return;
 				}
-				
-				setAudioDebug("SDK connected, seeking and playing...");
-				await seek(randomStart);
-				await play(track.uri, randomStart);
-				
-				setAudioDebug("Playing via SDK, will stop in " + (levelMs/1000) + "s");
-				setTimeout(() => {
-					void pause();
-					setIsPlaying(false);
-					setAudioDebug("SDK playback stopped");
-				}, levelMs);
-				return;
 			}
 
+			// Fallback to preview URL if SDK failed or not available
 			if (track.previewUrl) {
 				console.log("Using preview URL fallback");
 				setAudioDebug("Using preview URL: " + track.previewUrl);
@@ -183,6 +189,7 @@ export function PlayTestClip() {
 				Debug: {tracks.length} tracks, SDK: {isSdkAvailable ? 'Yes' : 'No'}, Loading: {loading ? 'Yes' : 'No'}
 				{error && `, Error: ${error}`}
 				{tracks.length > 0 && `, First track: ${tracks[0]?.name}`}
+				{tracks.length > 0 && `, Tracks with preview: ${tracks.filter(t => t.hasPreview).length}`}
 			</div>
 		</div>
 	);
