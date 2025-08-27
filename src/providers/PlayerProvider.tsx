@@ -92,6 +92,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				listeners.forEach((l) => l(state));
 			});
 			
+			// Create a promise to wait for the device ID
+			let deviceIdResolve: (value: string) => void;
+			const deviceIdPromise = new Promise<string>((resolve) => {
+				deviceIdResolve = resolve;
+			});
+			
 			playerRef.current.addListener("ready", (data: unknown) => {
 				console.log("PlayerProvider: player ready event:", data);
 				// Extract device ID from the ready event data
@@ -100,6 +106,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 					const newDeviceId = readyData.device_id;
 					console.log("PlayerProvider: device ID captured from ready event:", newDeviceId);
 					setDeviceId(newDeviceId);
+					deviceIdResolve(newDeviceId);
 				} else {
 					console.log("PlayerProvider: device ID not found in ready event data");
 				}
@@ -133,28 +140,29 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				console.log("PlayerProvider: successfully connected!");
 				console.log("PlayerProvider: player options:", playerRef.current._options);
 				
-				// Wait for the device ID to be available
-				if (!deviceId) {
-					console.log("PlayerProvider: waiting for device ID...");
-					await new Promise<void>((resolve) => {
-						const checkDeviceId = () => {
-							if (deviceId || (playerRef.current?._options?.id)) {
-								resolve();
-							} else {
-								setTimeout(checkDeviceId, 100);
-							}
-						};
-						checkDeviceId();
-					});
+				// Wait for the device ID to be available with a timeout
+				console.log("PlayerProvider: waiting for device ID...");
+				try {
+					const capturedDeviceId = await Promise.race([
+						deviceIdPromise,
+						new Promise<string>((_, reject) => 
+							setTimeout(() => reject(new Error("Device ID timeout")), 5000)
+						)
+					]);
+					console.log("PlayerProvider: device ID received:", capturedDeviceId);
+					return true;
+				} catch (error) {
+					console.error("PlayerProvider: error waiting for device ID:", error);
+					return false;
 				}
 			}
 			
-			return connected;
+			return false;
 		} catch (error) {
 			console.error("PlayerProvider: error during connection:", error);
 			return false;
 		}
-	}, [listeners, deviceId]);
+	}, [listeners]);
 
 	const play = useCallback(async (uri: string, positionMs = 0) => {
 		console.log("PlayerProvider: play() called", { uri, positionMs });
