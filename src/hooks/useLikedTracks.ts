@@ -13,12 +13,14 @@ type SpotifySavedTracksResponse = {
 		};
 	}>;
 	next: string | null;
+	total?: number; // Added for total count
 };
 
-export function useLikedTracks(limit = 50) {
+export function useLikedTracks(limit = 100) { // Increased from 20 to 100
 	const [tracks, setTracks] = useState<LikedTrack[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [loadingProgress, setLoadingProgress] = useState<{ loaded: number; total: number | null }>({ loaded: 0, total: null });
 
 	const normalize = useCallback((resp: SpotifySavedTracksResponse): LikedTrack[] => {
 		return resp.items.map(({ track }) => ({
@@ -57,18 +59,32 @@ export function useLikedTracks(limit = 50) {
 		console.log("useLikedTracks: loadAll called");
 		setLoading(true);
 		setError(null);
+		setLoadingProgress({ loaded: 0, total: null });
+		
 		try {
 			let offset = 0;
 			let all: LikedTrack[] = [];
+			
+			// First, get the total count
+			const firstPage = await fetchPage(0);
+			const totalCount = firstPage.total || 0;
+			setLoadingProgress({ loaded: 0, total: totalCount });
+			
+			// Load all pages
 			while (true) {
 				console.log("useLikedTracks: fetching page at offset", offset);
 				const page = await fetchPage(offset);
 				const normalized = normalize(page);
 				console.log("useLikedTracks: normalized", normalized.length, "tracks");
 				all = all.concat(normalized);
+				
+				// Update progress
+				setLoadingProgress({ loaded: all.length, total: totalCount });
+				
 				if (!page.next) break;
 				offset += limit;
 			}
+			
 			console.log("useLikedTracks: total tracks loaded", all.length);
 			setTracks(all);
 		} catch (e) {
@@ -86,8 +102,8 @@ export function useLikedTracks(limit = 50) {
 	// }, [loadAll]);
 
 	return useMemo(
-		() => ({ tracks, loading, error, loadAll }),
-		[tracks, loading, error, loadAll],
+		() => ({ tracks, loading, error, loadAll, loadingProgress }),
+		[tracks, loading, error, loadAll, loadingProgress],
 	);
 }
 

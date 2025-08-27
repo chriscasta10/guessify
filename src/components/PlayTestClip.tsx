@@ -2,9 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { usePlayer } from "@/providers/PlayerProvider";
+import { SearchAutocomplete } from "@/components/SearchAutocomplete";
 
-// More human-friendly timer levels: 1s, 2s, 4s, 8s, 16s, 32s
-const LEVELS = [1000, 2000, 4000, 8000, 16000, 32000];
+// Progressive difficulty: starts hard (short clips), gets easier (longer clips)
+// This creates a better user experience - challenging at first, then more manageable
+const LEVELS = [500, 1000, 2000, 3000, 5000, 8000]; // 0.5s → 1s → 2s → 3s → 5s → 8s
 
 type GameState = "waiting" | "playing" | "guessing" | "correct" | "incorrect" | "gameOver";
 
@@ -16,13 +18,21 @@ interface GameStats {
 	totalGuesses: number;
 }
 
+interface SearchResult {
+	id: string;
+	name: string;
+	artist: string;
+	album: string;
+	uri: string;
+}
+
 export function GuessifyGame() {
 	const { initPlayer, connect, play, pause, seek, isSdkAvailable } = usePlayer();
-	const { tracks, loadAll, loading, error } = useLikedTracks(20);
+	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(100);
 	const [levelIndex, setLevelIndex] = useState(0);
 	const [gameState, setGameState] = useState<GameState>("waiting");
 	const [currentTrack, setCurrentTrack] = useState<any>(null);
-	const [guessInput, setGuessInput] = useState("");
+	const [selectedSearchResult, setSelectedSearchResult] = useState<SearchResult | null>(null);
 	const [gameStats, setGameStats] = useState<GameStats>({
 		score: 0,
 		level: 0,
@@ -193,17 +203,10 @@ export function GuessifyGame() {
 	}, [connect, isSdkAvailable, levelIndex, pause, play, seek, tracks, loading, error, loadAll]);
 
 	const submitGuess = useCallback(() => {
-		if (!currentTrack || !guessInput.trim()) return;
+		if (!currentTrack || !selectedSearchResult) return;
 
-		const userGuess = guessInput.trim().toLowerCase();
-		const trackName = currentTrack.name.toLowerCase();
-		const artistName = currentTrack.artist.toLowerCase();
-		
-		// Simple fuzzy matching - check if guess contains track name or artist
-		const isCorrect = trackName.includes(userGuess) || 
-						 artistName.includes(userGuess) || 
-						 userGuess.includes(trackName) ||
-						 userGuess.includes(artistName);
+		// Stricter guessing: only correct if the song title matches exactly
+		const isCorrect = selectedSearchResult.id === currentTrack.id;
 
 		setGameStats(prev => ({
 			...prev,
@@ -234,20 +237,29 @@ export function GuessifyGame() {
 			setGameState("incorrect");
 			setDebugInfo(`Incorrect! Try again. You've made ${gameStats.attempts + 1} attempts.`);
 		}
-	}, [currentTrack, guessInput, gameStats.attempts, levelIndex]);
+	}, [currentTrack, selectedSearchResult, gameStats.attempts, levelIndex]);
+
+	const handleSearchSelect = useCallback((result: SearchResult) => {
+		setSelectedSearchResult(result);
+	}, []);
 
 	const nextLevel = useCallback(() => {
 		if (levelIndex < LEVELS.length - 1) {
 			setLevelIndex(prev => prev + 1);
 			setGameStats(prev => ({ ...prev, level: prev.level + 1, attempts: 0 }));
 			setGameState("waiting");
-			setGuessInput("");
-			setDebugInfo(`Level ${levelIndex + 2}: ${LEVELS[levelIndex + 1]}ms clips`);
+			setSelectedSearchResult(null);
+			setDebugInfo(`Level ${levelIndex + 2}: ${LEVELS[levelIndex + 1]}ms clips (easier!)`);
 		} else {
 			setGameState("gameOver");
 			setDebugInfo(`Game Complete! Final Score: ${gameStats.score}`);
 		}
 	}, [levelIndex, gameStats.score]);
+
+	const skipLevel = useCallback(() => {
+		// Skip to next level without penalty
+		nextLevel();
+	}, [nextLevel]);
 
 	const resetGame = useCallback(() => {
 		setLevelIndex(0);
@@ -259,8 +271,8 @@ export function GuessifyGame() {
 			totalGuesses: 0,
 		});
 		setGameState("waiting");
-		setGuessInput("");
-		setDebugInfo("Game reset! Start with 1 second clips.");
+		setSelectedSearchResult(null);
+		setDebugInfo("Game reset! Start with challenging 0.5 second clips.");
 	}, []);
 
 	const formatTime = (ms: number) => {
@@ -273,7 +285,7 @@ export function GuessifyGame() {
 			{/* Game Header */}
 			<div className="text-center">
 				<h2 className="text-2xl font-bold text-gray-800 mb-2">Guessify</h2>
-				<p className="text-gray-600">Guess the song from ultra-short clips!</p>
+				<p className="text-gray-600">Test your music memory with your Spotify likes!</p>
 			</div>
 
 			{/* Game Stats */}
@@ -283,7 +295,7 @@ export function GuessifyGame() {
 					<div className="text-sm text-gray-600">Score</div>
 				</div>
 				<div className="text-center">
-					<div className="text-2xl font-bold text-green-600">{gameStats.level + 1}</div>
+					<div className="text-2xl font-bold text-green-600">{levelIndex + 1}</div>
 					<div className="text-sm text-gray-600">Level</div>
 				</div>
 				<div className="text-center">
@@ -292,9 +304,24 @@ export function GuessifyGame() {
 				</div>
 			</div>
 
+			{/* Loading Progress */}
+			{loading && (
+				<div className="bg-blue-50 p-4 rounded-lg">
+					<div className="text-center text-blue-800 mb-2">
+						Loading your liked tracks... {loadingProgress.loaded}/{loadingProgress.total || '?'}
+					</div>
+					<div className="w-full bg-blue-200 rounded-full h-2">
+						<div 
+							className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+							style={{ width: `${loadingProgress.total ? (loadingProgress.loaded / loadingProgress.total) * 100 : 0}%` }}
+						></div>
+					</div>
+				</div>
+			)}
+
 			{/* Game Controls */}
 			{gameState === "waiting" && (
-				<div className="text-center">
+				<div className="text-center space-y-3">
 					<button 
 						className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
 						onClick={startNewRound}
@@ -302,6 +329,9 @@ export function GuessifyGame() {
 					>
 						{loading ? 'Loading...' : `Start Level ${levelIndex + 1} (${formatTime(LEVELS[levelIndex])})`}
 					</button>
+					<div className="text-sm text-gray-600">
+						{levelIndex === 0 ? "Start with challenging short clips!" : "Clips get longer and easier as you advance"}
+					</div>
 				</div>
 			)}
 
@@ -318,24 +348,45 @@ export function GuessifyGame() {
 				<div className="space-y-4">
 					<div className="text-center">
 						<div className="text-lg font-semibold text-gray-800 mb-2">🎯 What song was that?</div>
-						<div className="text-sm text-gray-600">Type the song name or artist</div>
+						<div className="text-sm text-gray-600">Search and select the exact song</div>
 					</div>
 					
-					<div className="flex gap-2">
-						<input
-							type="text"
-							value={guessInput}
-							onChange={(e) => setGuessInput(e.target.value)}
-							placeholder="Enter song name or artist..."
-							className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-							onKeyPress={(e) => e.key === 'Enter' && submitGuess()}
+					<div className="space-y-3">
+						<SearchAutocomplete
+							onSelect={handleSearchSelect}
+							placeholder="Search for a song..."
+							className="w-full"
 						/>
-						<button
-							onClick={submitGuess}
-							className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold"
-						>
-							Guess
-						</button>
+						
+						{selectedSearchResult && (
+							<div className="bg-green-50 p-3 rounded-lg border border-green-200">
+								<div className="text-sm text-green-800">
+									<strong>Selected:</strong> "{selectedSearchResult.name}" by {selectedSearchResult.artist}
+								</div>
+							</div>
+						)}
+						
+						<div className="flex gap-2">
+							<button
+								onClick={submitGuess}
+								disabled={!selectedSearchResult}
+								className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-semibold"
+							>
+								Guess
+							</button>
+							<button
+								onClick={startNewRound}
+								className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold"
+							>
+								🔁 Replay
+							</button>
+							<button
+								onClick={skipLevel}
+								className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold"
+							>
+								⏭️ Next
+							</button>
+						</div>
 					</div>
 					
 					<div className="text-sm text-gray-500 text-center">
@@ -367,7 +418,7 @@ export function GuessifyGame() {
 						onClick={startNewRound}
 						className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-semibold"
 					>
-						Replay Clip
+						🔁 Replay Clip
 					</button>
 				</div>
 			)}
