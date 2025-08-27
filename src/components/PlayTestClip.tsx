@@ -77,22 +77,43 @@ export function PlayTestClip() {
 				console.log("Using Spotify SDK");
 				setAudioDebug("Connecting to Spotify SDK...");
 				
+				// Debug the connection process step by step
+				setAudioDebug("Step 1: Checking SDK availability...");
+				console.log("SDK available:", isSdkAvailable);
+				console.log("Window.Spotify exists:", typeof window !== 'undefined' && !!window.Spotify);
+				
+				setAudioDebug("Step 2: Attempting to connect...");
 				const connected = await connect();
+				console.log("SDK connection result:", connected);
+				
 				if (!connected) {
 					setDebugInfo("Failed to connect to Spotify SDK, trying preview URL fallback");
 					setAudioDebug("SDK connection failed, falling back to preview");
+					console.log("SDK connection failed - this usually means:");
+					console.log("1. User doesn't have Spotify Premium");
+					console.log("2. No active Spotify app/devices");
+					console.log("3. Token issues");
 				} else {
-					setAudioDebug("SDK connected, seeking and playing...");
-					await seek(randomStart);
-					await play(track.uri, randomStart);
+					setAudioDebug("SDK connected successfully! Seeking and playing...");
+					console.log("SDK connected, attempting to seek and play");
 					
-					setAudioDebug("Playing via SDK, will stop in " + (levelMs/1000) + "s");
-					setTimeout(() => {
-						void pause();
-						setIsPlaying(false);
-						setAudioDebug("SDK playback stopped");
-					}, levelMs);
-					return;
+					try {
+						await seek(randomStart);
+						setAudioDebug("Seek successful, now playing...");
+						await play(track.uri, randomStart);
+						
+						setAudioDebug("Playing via SDK, will stop in " + (levelMs/1000) + "s");
+						setTimeout(() => {
+							void pause();
+							setIsPlaying(false);
+							setAudioDebug("SDK playback stopped");
+						}, levelMs);
+						return;
+					} catch (playError) {
+						console.error("Error during SDK playback:", playError);
+						setAudioDebug("SDK playback error: " + (playError instanceof Error ? playError.message : 'Unknown'));
+						// Fall through to preview URL
+					}
 				}
 			}
 

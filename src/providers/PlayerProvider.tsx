@@ -50,21 +50,85 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	}, [ready]);
 
 	const connect = useCallback(async () => {
-		if (playerRef.current) return true;
+		console.log("PlayerProvider: connect() called");
+		if (playerRef.current) {
+			console.log("PlayerProvider: player already exists, returning true");
+			return true;
+		}
+		
+		console.log("PlayerProvider: fetching token...");
 		const tokenRes = await fetch("/api/auth/token");
+		console.log("PlayerProvider: token response status:", tokenRes.status);
+		
 		const tokenJson = (await tokenRes.json().catch(() => ({}))) as { accessToken?: string };
+		console.log("PlayerProvider: token response:", tokenJson);
+		
 		const accessToken = tokenJson?.accessToken as string | undefined;
-		if (!accessToken || !window.Spotify) return false;
-		playerRef.current = new window.Spotify.Player({
-			name: "Guessify Player",
-			getOAuthToken: (cb: (t: string) => void) => cb(accessToken),
-			volume: 0.8,
-		});
-		playerRef.current.addListener("player_state_changed", (state: unknown) => {
-			listeners.forEach((l) => l(state));
-		});
-		await playerRef.current.connect();
-		return true;
+		if (!accessToken) {
+			console.log("PlayerProvider: no access token available");
+			return false;
+		}
+		
+		if (!window.Spotify) {
+			console.log("PlayerProvider: window.Spotify not available");
+			return false;
+		}
+		
+		console.log("PlayerProvider: creating new Spotify Player...");
+		try {
+			playerRef.current = new window.Spotify.Player({
+				name: "Guessify Player",
+				getOAuthToken: (cb: (t: string) => void) => {
+					console.log("PlayerProvider: getOAuthToken callback called");
+					cb(accessToken);
+				},
+				volume: 0.8,
+			});
+			
+			console.log("PlayerProvider: player created, adding listeners...");
+			playerRef.current.addListener("player_state_changed", (state: unknown) => {
+				console.log("PlayerProvider: player state changed:", state);
+				listeners.forEach((l) => l(state));
+			});
+			
+			playerRef.current.addListener("ready", (data: unknown) => {
+				console.log("PlayerProvider: player ready event:", data);
+			});
+			
+			playerRef.current.addListener("not_ready", (data: unknown) => {
+				console.log("PlayerProvider: player not ready event:", data);
+			});
+			
+			playerRef.current.addListener("initialization_error", (data: unknown) => {
+				console.log("PlayerProvider: initialization error:", data);
+			});
+			
+			playerRef.current.addListener("authentication_error", (data: unknown) => {
+				console.log("PlayerProvider: authentication error:", data);
+			});
+			
+			playerRef.current.addListener("account_error", (data: unknown) => {
+				console.log("PlayerProvider: account error:", data);
+			});
+			
+			playerRef.current.addListener("playback_error", (data: unknown) => {
+				console.log("PlayerProvider: playback error:", data);
+			});
+			
+			console.log("PlayerProvider: attempting to connect...");
+			const connected = await playerRef.current.connect();
+			console.log("PlayerProvider: connect() result:", connected);
+			
+			if (connected) {
+				console.log("PlayerProvider: successfully connected!");
+				console.log("PlayerProvider: player options:", playerRef.current._options);
+			}
+			
+			return connected;
+		} catch (error) {
+			console.error("PlayerProvider: error during connection:", error);
+			return false;
+		}
 	}, [listeners]);
 
 	const play = useCallback(async (uri: string, positionMs = 0) => {
