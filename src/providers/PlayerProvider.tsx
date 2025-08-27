@@ -123,14 +123,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				const playerState = state as any;
 				console.log("PlayerProvider: Full state details:", {
 					is_playing: playerState?.is_playing,
+					paused: playerState?.paused,
+					loading: playerState?.loading,
 					position: playerState?.position,
 					duration: playerState?.duration,
 					track: playerState?.track,
 					device_id: playerState?.device_id
 				});
 				
+				// CRITICAL FIX: Extract is_playing from the actual state properties
+				// The is_playing field might be undefined, but we can derive it
+				const isActuallyPlaying = playerState && !playerState.paused && !playerState.loading;
+				console.log("PlayerProvider: Derived is_playing status:", isActuallyPlaying);
+				
 				// Check if playback has started
-				if (playerState && playerState.is_playing) {
+				if (isActuallyPlaying) {
 					console.log("PlayerProvider: Playback started! Notifying listeners...");
 					console.log("PlayerProvider: Number of listeners:", listeners.length);
 					// Notify all listeners that playback has started

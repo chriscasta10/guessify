@@ -94,14 +94,20 @@ export function GuessifyGame() {
 			const playerState = state as any;
 			console.log("GuessifyGame: Full player state:", {
 				is_playing: playerState?.is_playing,
+				paused: playerState?.paused,
+				loading: playerState?.loading,
 				position: playerState?.position,
 				duration: playerState?.duration,
 				track: playerState?.track,
 				device_id: playerState?.device_id
 			});
 			
+			// CRITICAL FIX: Derive is_playing status the same way as PlayerProvider
+			const isActuallyPlaying = playerState && !playerState.paused && !playerState.loading;
+			console.log("GuessifyGame: Derived is_playing status:", isActuallyPlaying);
+			
 			// Check if this is a playback start event and we're waiting for it
-			if (playerState && playerState.is_playing && isPlayingRef.current && currentLevelRef.current) {
+			if (isActuallyPlaying && isPlayingRef.current && currentLevelRef.current) {
 				console.log("GuessifyGame: SDK playback started! Starting timeout now...");
 				setAudioDebug(`SDK playback confirmed, starting ${formatTime(currentLevelRef.current.duration)} timeout...`);
 				
@@ -122,7 +128,7 @@ export function GuessifyGame() {
 			} else {
 				console.log("GuessifyGame: State change ignored - conditions not met:", {
 					hasState: !!playerState,
-					isPlaying: playerState?.is_playing,
+					isActuallyPlaying,
 					isPlayingRef: isPlayingRef.current,
 					hasCurrentLevel: !!currentLevelRef.current
 				});
