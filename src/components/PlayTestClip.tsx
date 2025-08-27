@@ -4,9 +4,9 @@ import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { SearchAutocomplete } from "@/components/SearchAutocomplete";
 
-// Progressive difficulty: starts hard (short clips), gets easier (longer clips)
-// This creates a better user experience - challenging at first, then more manageable
-const LEVELS = [500, 1000, 2000, 3000, 5000, 8000]; // 0.5s → 1s → 2s → 3s → 5s → 8s
+// Better level progression: starts hard (short clips), gets easier (longer clips)
+// 4 levels total: challenging → manageable → comfortable → easy
+const LEVELS = [500, 1500, 4000, 8000]; // 0.5s → 1.5s → 4s → 8s
 
 type GameState = "waiting" | "playing" | "guessing" | "correct" | "incorrect" | "gameOver";
 
@@ -33,6 +33,7 @@ export function GuessifyGame() {
 	const [gameState, setGameState] = useState<GameState>("waiting");
 	const [currentTrack, setCurrentTrack] = useState<any>(null);
 	const [selectedSearchResult, setSelectedSearchResult] = useState<SearchResult | null>(null);
+	const [currentClipDuration, setCurrentClipDuration] = useState(LEVELS[0]);
 	const [gameStats, setGameStats] = useState<GameStats>({
 		score: 0,
 		level: 0,
@@ -43,6 +44,7 @@ export function GuessifyGame() {
 	const [debugInfo, setDebugInfo] = useState<string>("");
 	const [audioDebug, setAudioDebug] = useState<string>("");
 	const audioRef = useRef<HTMLAudioElement | null>(null);
+	const playbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 	useEffect(() => {
 		console.log("PlayTestClip: useEffect triggered");
@@ -58,6 +60,15 @@ export function GuessifyGame() {
 		});
 	}, [tracks, loading, error]);
 
+	// Cleanup timeout on unmount
+	useEffect(() => {
+		return () => {
+			if (playbackTimeoutRef.current) {
+				clearTimeout(playbackTimeoutRef.current);
+			}
+		};
+	}, []);
+
 	const startNewRound = useCallback(async () => {
 		console.log("PlayTestClip: startNewRound called", { 
 			tracksLength: tracks.length, 
@@ -66,6 +77,11 @@ export function GuessifyGame() {
 			loading,
 			error 
 		});
+
+		// Clear any existing timeout
+		if (playbackTimeoutRef.current) {
+			clearTimeout(playbackTimeoutRef.current);
+		}
 
 		// Load tracks on-demand if we don't have any
 		if (tracks.length === 0) {
@@ -92,12 +108,12 @@ export function GuessifyGame() {
 		console.log("Track preview info:", { hasPreview: track.hasPreview, previewUrl: track.previewUrl });
 		
 		setCurrentTrack(track);
-		const levelMs = LEVELS[levelIndex];
+		const levelMs = currentClipDuration;
 		const randomStart = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (levelMs + 3000))));
 
 		setDebugInfo(`Playing ${track.name} by ${track.artist} at ${randomStart}ms for ${levelMs}ms`);
 		setGameState("playing");
-		setAudioDebug("Starting playback...");
+		setAudioDebug(`Playing ${formatTime(levelMs)} snippet...`);
 
 		try {
 			// Always try Spotify SDK first (works for all tracks)
@@ -130,12 +146,15 @@ export function GuessifyGame() {
 						setAudioDebug("Seek successful, now playing...");
 						await play(track.uri, randomStart);
 						
-						setAudioDebug("Playing via SDK, will stop in " + (levelMs/1000) + "s");
-						setTimeout(() => {
-							void pause();
+						setAudioDebug(`Playing via SDK, will stop in ${formatTime(levelMs)}`);
+						
+						// Set timeout to stop playback
+						playbackTimeoutRef.current = setTimeout(async () => {
+							await pause();
 							setGameState("guessing");
 							setAudioDebug("SDK playback stopped - time to guess!");
 						}, levelMs);
+						
 						return;
 					} catch (playError) {
 						console.error("Error during SDK playback:", playError);
@@ -171,17 +190,16 @@ export function GuessifyGame() {
 					setAudioDebug("Attempting to play audio...");
 					await audioRef.current.play();
 					console.log("Audio started playing");
-					setAudioDebug("Audio play() succeeded, should hear sound now");
+					setAudioDebug(`Audio play() succeeded, will stop in ${formatTime(levelMs)}`);
 					
-					// Stop after the specified duration
-					setTimeout(() => {
+					// Set timeout to stop after the specified duration
+					playbackTimeoutRef.current = setTimeout(() => {
 						if (audioRef.current) {
 							audioRef.current.pause();
 							console.log("Audio stopped");
-							setAudioDebug("Audio manually stopped");
+							setAudioDebug("Preview playback stopped - time to guess!");
 						}
 						setGameState("guessing");
-						setAudioDebug("Preview playback stopped - time to guess!");
 					}, levelMs);
 				} catch (playError) {
 					console.error("Error playing audio:", playError);
@@ -200,7 +218,19 @@ export function GuessifyGame() {
 			setAudioDebug("General error: " + (err instanceof Error ? err.message : 'Unknown'));
 			setGameState("waiting");
 		}
-	}, [connect, isSdkAvailable, levelIndex, pause, play, seek, tracks, loading, error, loadAll]);
+	}, [connect, isSdkAvailable, currentClipDuration, pause, play, seek, tracks, loading, error, loadAll]);
+
+	const extendTime = useCallback(() => {
+		// Extend the current clip duration by 50%
+		const newDuration = Math.min(currentClipDuration * 1.5, 10000); // Max 10 seconds
+		setCurrentClipDuration(newDuration);
+		setDebugInfo(`Time extended to ${formatTime(newDuration)}`);
+		
+		// Restart the round with the new duration
+		setTimeout(() => {
+			void startNewRound();
+		}, 500);
+	}, [currentClipDuration, startNewRound]);
 
 	const submitGuess = useCallback(() => {
 		if (!currentTrack || !selectedSearchResult) return;
@@ -246,10 +276,11 @@ export function GuessifyGame() {
 	const nextLevel = useCallback(() => {
 		if (levelIndex < LEVELS.length - 1) {
 			setLevelIndex(prev => prev + 1);
+			setCurrentClipDuration(LEVELS[levelIndex + 1]); // Reset to level duration
 			setGameStats(prev => ({ ...prev, level: prev.level + 1, attempts: 0 }));
 			setGameState("waiting");
 			setSelectedSearchResult(null);
-			setDebugInfo(`Level ${levelIndex + 2}: ${LEVELS[levelIndex + 1]}ms clips (easier!)`);
+			setDebugInfo(`Level ${levelIndex + 2}: ${formatTime(LEVELS[levelIndex + 1])} clips (easier!)`);
 		} else {
 			setGameState("gameOver");
 			setDebugInfo(`Game Complete! Final Score: ${gameStats.score}`);
@@ -263,6 +294,7 @@ export function GuessifyGame() {
 
 	const resetGame = useCallback(() => {
 		setLevelIndex(0);
+		setCurrentClipDuration(LEVELS[0]);
 		setGameStats({
 			score: 0,
 			level: 0,
@@ -277,7 +309,16 @@ export function GuessifyGame() {
 
 	const formatTime = (ms: number) => {
 		if (ms < 1000) return `${ms}ms`;
-		return `${ms / 1000}s`;
+		return `${(ms / 1000).toFixed(1)}s`;
+	};
+
+	const getLoadingMessage = () => {
+		if (loadingProgress.total && loadingProgress.total > 1000) {
+			return "This may take a few seconds if you have a lot of liked songs...";
+		} else if (loadingProgress.total && loadingProgress.total > 500) {
+			return "Loading your music library...";
+		}
+		return "Loading your liked tracks...";
 	};
 
 	return (
@@ -308,7 +349,7 @@ export function GuessifyGame() {
 			{loading && (
 				<div className="bg-blue-50 p-4 rounded-lg">
 					<div className="text-center text-blue-800 mb-2">
-						Loading your liked tracks... {loadingProgress.loaded}/{loadingProgress.total || '?'}
+						{getLoadingMessage()} {loadingProgress.loaded}/{loadingProgress.total || '?'}
 					</div>
 					<div className="w-full bg-blue-200 rounded-full h-2">
 						<div 
@@ -339,7 +380,9 @@ export function GuessifyGame() {
 			{gameState === "playing" && (
 				<div className="text-center">
 					<div className="text-lg font-semibold text-gray-800 mb-2">🎵 Playing...</div>
-					<div className="text-sm text-gray-600">Listen carefully!</div>
+					<div className="text-sm text-gray-600">
+						You'll hear a {formatTime(currentClipDuration)} snippet
+					</div>
 				</div>
 			)}
 
@@ -381,16 +424,22 @@ export function GuessifyGame() {
 								🔁 Replay
 							</button>
 							<button
-								onClick={skipLevel}
+								onClick={extendTime}
 								className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold"
 							>
-								⏭️ Next
+								⏰ Extend Time
+							</button>
+							<button
+								onClick={skipLevel}
+								className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold"
+							>
+								⏭️ Next Level
 							</button>
 						</div>
 					</div>
 					
 					<div className="text-sm text-gray-500 text-center">
-						Attempts: {gameStats.attempts + 1}
+						Attempts: {gameStats.attempts + 1} | Current clip: {formatTime(currentClipDuration)}
 					</div>
 				</div>
 			)}
@@ -461,5 +510,6 @@ export function GuessifyGame() {
 		</div>
 	);
 }
+
 
 
