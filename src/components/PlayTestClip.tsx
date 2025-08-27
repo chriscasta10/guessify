@@ -4,18 +4,34 @@ import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { SearchAutocomplete } from "@/components/SearchAutocomplete";
 
-// Better level progression: starts hard (short clips), gets easier (longer clips)
-// 4 levels total: challenging → manageable → comfortable → easy
-const LEVELS = [500, 1500, 4000, 8000]; // 0.5s → 1.5s → 4s → 8s
+// Level-based round system: one song progresses through difficulty levels
+interface GameLevel {
+	name: string;
+	duration: number;
+	points: number;
+}
 
-type GameState = "waiting" | "playing" | "guessing" | "correct" | "incorrect" | "gameOver";
+const GAME_LEVELS: GameLevel[] = [
+	{ name: "Extreme", duration: 300, points: 1000 },   // 0.3s
+	{ name: "Hard", duration: 1000, points: 500 },      // 1.0s
+	{ name: "Medium", duration: 2000, points: 250 },    // 2.0s
+	{ name: "Easy", duration: 4000, points: 125 },      // 4.0s
+	{ name: "Chill", duration: 8000, points: 60 },      // 8.0s
+];
+
+type GameState = "waiting" | "playing" | "guessing" | "correct" | "gameOver";
 
 interface GameStats {
-	score: number;
-	level: number;
+	currentScore: number;
+	highScore: number;
+	currentStreak: number;
+	bestStreak: number;
+}
+
+interface RoundData {
+	track: any;
+	currentLevelIndex: number;
 	attempts: number;
-	correctGuesses: number;
-	totalGuesses: number;
 }
 
 interface SearchResult {
@@ -28,21 +44,37 @@ interface SearchResult {
 
 export function GuessifyGame() {
 	const { initPlayer, connect, play, pause, seek, isSdkAvailable } = usePlayer();
-	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(50); // Spotify API max limit
-	const [levelIndex, setLevelIndex] = useState(0);
+	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(50);
 	const [gameState, setGameState] = useState<GameState>("waiting");
-	const [currentTrack, setCurrentTrack] = useState<any>(null);
+	const [currentRound, setCurrentRound] = useState<RoundData | null>(null);
 	const [selectedSearchResult, setSelectedSearchResult] = useState<SearchResult | null>(null);
-	const [currentClipDuration, setCurrentClipDuration] = useState(LEVELS[0]);
-	const [gameStats, setGameStats] = useState<GameStats>({
-		score: 0,
-		level: 0,
-		attempts: 0,
-		correctGuesses: 0,
-		totalGuesses: 0,
+	const [gameStats, setGameStats] = useState<GameStats>(() => {
+		// Load from localStorage on init
+		if (typeof window !== 'undefined') {
+			const saved = localStorage.getItem('guessify-stats');
+			if (saved) {
+				try {
+					return JSON.parse(saved);
+				} catch (e) {
+					console.error('Failed to parse saved stats:', e);
+				}
+			}
+		}
+		return {
+			currentScore: 0,
+			highScore: 0,
+			currentStreak: 0,
+			bestStreak: 0,
+		};
 	});
 	const [debugInfo, setDebugInfo] = useState<string>("");
 	const [audioDebug, setAudioDebug] = useState<string>("");
+	const [endScreenData, setEndScreenData] = useState<{
+		finalScore: number;
+		finalStreak: number;
+		track: any;
+		wasCorrect: boolean;
+	} | null>(null);
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const playbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -60,6 +92,13 @@ export function GuessifyGame() {
 		});
 	}, [tracks, loading, error]);
 
+	// Save stats to localStorage whenever they change
+	useEffect(() => {
+		if (typeof window !== 'undefined') {
+			localStorage.setItem('guessify-stats', JSON.stringify(gameStats));
+		}
+	}, [gameStats]);
+
 	// Cleanup timeout on unmount
 	useEffect(() => {
 		return () => {
@@ -73,7 +112,6 @@ export function GuessifyGame() {
 		console.log("PlayTestClip: startNewRound called", { 
 			tracksLength: tracks.length, 
 			isSdkAvailable, 
-			levelIndex,
 			loading,
 			error 
 		});
@@ -107,13 +145,34 @@ export function GuessifyGame() {
 		console.log("Selected track:", track);
 		console.log("Track preview info:", { hasPreview: track.hasPreview, previewUrl: track.previewUrl });
 		
-		setCurrentTrack(track);
-		const levelMs = currentClipDuration;
-		const randomStart = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (levelMs + 3000))));
+		// Start new round at Level 1 (Extreme difficulty)
+		const newRound: RoundData = {
+			track,
+			currentLevelIndex: 0,
+			attempts: 0,
+		};
+		
+		setCurrentRound(newRound);
+		setSelectedSearchResult(null);
+		setGameState("waiting");
+		setDebugInfo(`New round started! ${track.name} by ${track.artist}`);
+	}, [tracks, loading, error, loadAll]);
 
-		setDebugInfo(`Playing ${track.name} by ${track.artist} at ${randomStart}ms for ${levelMs}ms`);
+	const playCurrentLevel = useCallback(async () => {
+		if (!currentRound) return;
+
+		// Clear any existing timeout
+		if (playbackTimeoutRef.current) {
+			clearTimeout(playbackTimeoutRef.current);
+		}
+
+		const currentLevel = GAME_LEVELS[currentRound.currentLevelIndex];
+		const track = currentRound.track;
+		const randomStart = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
+
+		setDebugInfo(`Playing ${track.name} by ${track.artist} at ${randomStart}ms for ${currentLevel.duration}ms (${currentLevel.name} level)`);
 		setGameState("playing");
-		setAudioDebug(`Playing ${formatTime(levelMs)} snippet...`);
+		setAudioDebug(`Playing ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
 
 		try {
 			// Always try Spotify SDK first (works for all tracks)
@@ -121,7 +180,6 @@ export function GuessifyGame() {
 				console.log("Using Spotify SDK");
 				setAudioDebug("Connecting to Spotify SDK...");
 				
-				// Debug the connection process step by step
 				setAudioDebug("Step 1: Checking SDK availability...");
 				console.log("SDK available:", isSdkAvailable);
 				console.log("Window.Spotify exists:", typeof window !== 'undefined' && !!window.Spotify);
@@ -133,10 +191,6 @@ export function GuessifyGame() {
 				if (!connected) {
 					setDebugInfo("Failed to connect to Spotify SDK, trying preview URL fallback");
 					setAudioDebug("SDK connection failed, falling back to preview");
-					console.log("SDK connection failed - this usually means:");
-					console.log("1. User doesn't have Spotify Premium");
-					console.log("2. No active Spotify app/devices");
-					console.log("3. Token issues");
 				} else {
 					setAudioDebug("SDK connected successfully! Seeking and playing...");
 					console.log("SDK connected, attempting to seek and play");
@@ -146,14 +200,14 @@ export function GuessifyGame() {
 						setAudioDebug("Seek successful, now playing...");
 						await play(track.uri, randomStart);
 						
-						setAudioDebug(`Playing via SDK, will stop in ${formatTime(levelMs)}`);
+						setAudioDebug(`Playing via SDK, will stop in ${formatTime(currentLevel.duration)}`);
 						
 						// Set timeout to stop playback
 						playbackTimeoutRef.current = setTimeout(async () => {
 							await pause();
 							setGameState("guessing");
 							setAudioDebug("SDK playback stopped - time to guess!");
-						}, levelMs);
+						}, currentLevel.duration);
 						
 						return;
 					} catch (playError) {
@@ -190,7 +244,7 @@ export function GuessifyGame() {
 					setAudioDebug("Attempting to play audio...");
 					await audioRef.current.play();
 					console.log("Audio started playing");
-					setAudioDebug(`Audio play() succeeded, will stop in ${formatTime(levelMs)}`);
+					setAudioDebug(`Audio play() succeeded, will stop in ${formatTime(currentLevel.duration)}`);
 					
 					// Set timeout to stop after the specified duration
 					playbackTimeoutRef.current = setTimeout(() => {
@@ -200,7 +254,7 @@ export function GuessifyGame() {
 							setAudioDebug("Preview playback stopped - time to guess!");
 						}
 						setGameState("guessing");
-					}, levelMs);
+					}, currentLevel.duration);
 				} catch (playError) {
 					console.error("Error playing audio:", playError);
 					setDebugInfo(`Audio playback error: ${playError instanceof Error ? playError.message : 'Unknown error'}`);
@@ -218,93 +272,109 @@ export function GuessifyGame() {
 			setAudioDebug("General error: " + (err instanceof Error ? err.message : 'Unknown'));
 			setGameState("waiting");
 		}
-	}, [connect, isSdkAvailable, currentClipDuration, pause, play, seek, tracks, loading, error, loadAll]);
+	}, [currentRound, connect, isSdkAvailable, pause, play, seek]);
 
-	const extendTime = useCallback(() => {
-		// Extend the current clip duration by 50%
-		const newDuration = Math.min(currentClipDuration * 1.5, 10000); // Max 10 seconds
-		setCurrentClipDuration(newDuration);
-		setDebugInfo(`Time extended to ${formatTime(newDuration)}`);
+	const nextLevel = useCallback(() => {
+		if (!currentRound) return;
 		
-		// Restart the round with the new duration
-		setTimeout(() => {
-			void startNewRound();
-		}, 500);
-	}, [currentClipDuration, startNewRound]);
+		// Move to next level (longer clip)
+		if (currentRound.currentLevelIndex < GAME_LEVELS.length - 1) {
+			setCurrentRound(prev => prev ? {
+				...prev,
+				currentLevelIndex: prev.currentLevelIndex + 1,
+				attempts: prev.attempts + 1,
+			} : null);
+			
+			const nextLevel = GAME_LEVELS[currentRound.currentLevelIndex + 1];
+			setDebugInfo(`Level increased to ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
+			
+			// Auto-play the new level
+			setTimeout(() => {
+				void playCurrentLevel();
+			}, 500);
+		}
+	}, [currentRound, playCurrentLevel]);
 
 	const submitGuess = useCallback(() => {
-		if (!currentTrack || !selectedSearchResult) return;
+		if (!currentRound || !selectedSearchResult) return;
 
-		// Stricter guessing: only correct if the song title matches exactly
-		const isCorrect = selectedSearchResult.id === currentTrack.id;
-
-		setGameStats(prev => ({
-			...prev,
-			attempts: prev.attempts + 1,
-			totalGuesses: prev.totalGuesses + 1,
-			correctGuesses: isCorrect ? prev.correctGuesses + 1 : prev.correctGuesses,
-		}));
+		// Check if guess is correct
+		const isCorrect = selectedSearchResult.id === currentRound.track.id;
 
 		if (isCorrect) {
-			// Calculate score based on level and attempts
-			const baseScore = (LEVELS.length - levelIndex) * 100; // Higher levels = more points
-			const attemptPenalty = Math.max(0, (gameStats.attempts - 1) * 50); // Penalty for multiple attempts
-			const roundScore = Math.max(10, baseScore - attemptPenalty);
+			// Award points for current level
+			const currentLevel = GAME_LEVELS[currentRound.currentLevelIndex];
+			const pointsEarned = currentLevel.points;
 			
-			setGameStats(prev => ({
-				...prev,
-				score: prev.score + roundScore,
-			}));
+			// Update stats
+			setGameStats(prev => {
+				const newScore = prev.currentScore + pointsEarned;
+				const newStreak = prev.currentStreak + 1;
+				
+				return {
+					currentScore: newScore,
+					highScore: Math.max(prev.highScore, newScore),
+					currentStreak: newStreak,
+					bestStreak: Math.max(prev.bestStreak, newStreak),
+				};
+			});
 			
-			setGameState("correct");
-			setDebugInfo(`Correct! +${roundScore} points. It was "${currentTrack.name}" by ${currentTrack.artist}`);
+			setDebugInfo(`Correct! +${pointsEarned} points for ${currentLevel.name} level. It was "${currentRound.track.name}" by ${currentRound.track.artist}`);
+			
+			// End round and show end screen
+			setEndScreenData({
+				finalScore: gameStats.currentScore + pointsEarned,
+				finalStreak: gameStats.currentStreak + 1,
+				track: currentRound.track,
+				wasCorrect: true,
+			});
+			setGameState("gameOver");
 		} else {
-			setGameStats(prev => ({
-				...prev,
-				attempts: prev.attempts + 1,
-			}));
-			
-			setGameState("incorrect");
-			setDebugInfo(`Incorrect! Try again. You've made ${gameStats.attempts + 1} attempts.`);
+			// Wrong guess - end run immediately
+			setEndScreenData({
+				finalScore: gameStats.currentScore,
+				finalStreak: gameStats.currentStreak,
+				track: currentRound.track,
+				wasCorrect: false,
+			});
+			setGameState("gameOver");
 		}
-	}, [currentTrack, selectedSearchResult, gameStats.attempts, levelIndex]);
+	}, [currentRound, selectedSearchResult, gameStats.currentScore, gameStats.currentStreak]);
+
+	const giveUp = useCallback(() => {
+		if (!currentRound) return;
+		
+		// Give up - end run with 0 points, break streak
+		setGameStats(prev => ({
+			...prev,
+			currentStreak: 0,
+		}));
+		
+		setEndScreenData({
+			finalScore: gameStats.currentScore,
+			finalStreak: 0,
+			track: currentRound.track,
+			wasCorrect: false,
+		});
+		setGameState("gameOver");
+	}, [currentRound, gameStats.currentScore]);
 
 	const handleSearchSelect = useCallback((result: SearchResult) => {
 		setSelectedSearchResult(result);
 	}, []);
 
-	const nextLevel = useCallback(() => {
-		if (levelIndex < LEVELS.length - 1) {
-			setLevelIndex(prev => prev + 1);
-			setCurrentClipDuration(LEVELS[levelIndex + 1]); // Reset to level duration
-			setGameStats(prev => ({ ...prev, level: prev.level + 1, attempts: 0 }));
-			setGameState("waiting");
-			setSelectedSearchResult(null);
-			setDebugInfo(`Level ${levelIndex + 2}: ${formatTime(LEVELS[levelIndex + 1])} clips (easier!)`);
-		} else {
-			setGameState("gameOver");
-			setDebugInfo(`Game Complete! Final Score: ${gameStats.score}`);
-		}
-	}, [levelIndex, gameStats.score]);
-
-	const skipLevel = useCallback(() => {
-		// Skip to next level without penalty
-		nextLevel();
-	}, [nextLevel]);
-
-	const resetGame = useCallback(() => {
-		setLevelIndex(0);
-		setCurrentClipDuration(LEVELS[0]);
-		setGameStats({
-			score: 0,
-			level: 0,
-			attempts: 0,
-			correctGuesses: 0,
-			totalGuesses: 0,
-		});
-		setGameState("waiting");
+	const startNewGame = useCallback(() => {
+		// Reset for new game
+		setGameStats(prev => ({
+			...prev,
+			currentScore: 0,
+			currentStreak: 0,
+		}));
+		setCurrentRound(null);
 		setSelectedSearchResult(null);
-		setDebugInfo("Game reset! Start with challenging 0.5 second clips.");
+		setEndScreenData(null);
+		setGameState("waiting");
+		setDebugInfo("New game started! Click 'Start Round' to begin.");
 	}, []);
 
 	const formatTime = (ms: number) => {
@@ -321,27 +391,39 @@ export function GuessifyGame() {
 		return "Loading your liked tracks...";
 	};
 
+	const getCurrentLevel = () => {
+		return currentRound ? GAME_LEVELS[currentRound.currentLevelIndex] : null;
+	};
+
 	return (
 		<div className="flex flex-col gap-4 max-w-2xl mx-auto">
 			{/* Game Header */}
 			<div className="text-center">
-				<h2 className="text-2xl font-bold text-gray-800 mb-2">Guessify</h2>
+				<h2 className="text-2xl font-bold text-gray-800 mb-2">🎵 Guessify</h2>
 				<p className="text-gray-600">Test your music memory with your Spotify likes!</p>
 			</div>
 
-			{/* Game Stats */}
-			<div className="grid grid-cols-3 gap-4 bg-gray-50 p-4 rounded-lg">
+			{/* Game Stats HUD */}
+			<div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
 				<div className="text-center">
-					<div className="text-2xl font-bold text-blue-600">{gameStats.score}</div>
-					<div className="text-sm text-gray-600">Score</div>
+					<div className="text-2xl font-bold text-blue-600">{gameStats.currentScore}</div>
+					<div className="text-sm text-gray-600">Current Score</div>
 				</div>
 				<div className="text-center">
-					<div className="text-2xl font-bold text-green-600">{levelIndex + 1}</div>
-					<div className="text-sm text-gray-600">Level</div>
+					<div className="text-2xl font-bold text-green-600">{gameStats.currentStreak}</div>
+					<div className="text-sm text-gray-600">Current Streak</div>
+				</div>
+			</div>
+
+			{/* High Score Display */}
+			<div className="grid grid-cols-2 gap-4 bg-purple-50 p-3 rounded-lg">
+				<div className="text-center">
+					<div className="text-lg font-bold text-purple-600">{gameStats.highScore}</div>
+					<div className="text-xs text-gray-600">High Score</div>
 				</div>
 				<div className="text-center">
-					<div className="text-2xl font-bold text-purple-600">{gameStats.correctGuesses}</div>
-					<div className="text-sm text-gray-600">Correct</div>
+					<div className="text-lg font-bold text-purple-600">{gameStats.bestStreak}</div>
+					<div className="text-xs text-gray-600">Best Streak</div>
 				</div>
 			</div>
 
@@ -363,35 +445,46 @@ export function GuessifyGame() {
 			{/* Game Controls */}
 			{gameState === "waiting" && (
 				<div className="text-center space-y-3">
-					<button 
-						className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
-						onClick={startNewRound}
-						disabled={loading}
-					>
-						{loading ? 'Loading...' : `Start Level ${levelIndex + 1} (${formatTime(LEVELS[levelIndex])})`}
-					</button>
+					{!currentRound ? (
+						<button 
+							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
+							onClick={startNewRound}
+							disabled={loading}
+						>
+							{loading ? 'Loading...' : 'Start Round'}
+						</button>
+					) : (
+						<button 
+							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
+							onClick={playCurrentLevel}
+						>
+							Play {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
+						</button>
+					)}
 					<div className="text-sm text-gray-600">
-						{levelIndex === 0 ? "Start with challenging short clips!" : "Clips get longer and easier as you advance"}
+						{!currentRound ? "Start a new round with a random song!" : "Current song: " + currentRound.track.name}
 					</div>
 				</div>
 			)}
 
 			{/* Game State Display */}
-			{gameState === "playing" && (
+			{gameState === "playing" && currentRound && (
 				<div className="text-center">
 					<div className="text-lg font-semibold text-gray-800 mb-2">🎵 Playing...</div>
 					<div className="text-sm text-gray-600">
-						You'll hear a {formatTime(currentClipDuration)} snippet
+						{currentRound.track.name} - {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
 					</div>
 				</div>
 			)}
 
 			{/* Guess Input */}
-			{gameState === "guessing" && (
+			{gameState === "guessing" && currentRound && (
 				<div className="space-y-4">
 					<div className="text-center">
 						<div className="text-lg font-semibold text-gray-800 mb-2">🎯 What song was that?</div>
-						<div className="text-sm text-gray-600">Search and select the exact song</div>
+						<div className="text-sm text-gray-600">
+							{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
+						</div>
 					</div>
 					
 					<div className="space-y-3">
@@ -415,76 +508,67 @@ export function GuessifyGame() {
 								disabled={!selectedSearchResult}
 								className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-semibold"
 							>
-								Guess
+								Submit Guess
 							</button>
 							<button
-								onClick={startNewRound}
+								onClick={playCurrentLevel}
 								className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold"
 							>
 								🔁 Replay
 							</button>
 							<button
-								onClick={extendTime}
-								className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold"
+								onClick={nextLevel}
+								disabled={currentRound.currentLevelIndex >= GAME_LEVELS.length - 1}
+								className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold"
 							>
-								⏰ Extend Time
+								⏰ More Time
 							</button>
 							<button
-								onClick={skipLevel}
-								className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold"
+								onClick={giveUp}
+								className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold"
 							>
-								⏭️ Next Level
+								🏳️ Give Up
 							</button>
 						</div>
 					</div>
 					
 					<div className="text-sm text-gray-500 text-center">
-						Attempts: {gameStats.attempts + 1} | Current clip: {formatTime(currentClipDuration)}
+						Attempts: {currentRound.attempts + 1} | Level: {getCurrentLevel()?.name} ({formatTime(getCurrentLevel()?.duration || 0)})
 					</div>
 				</div>
 			)}
 
-			{/* Result Display */}
-			{gameState === "correct" && (
+			{/* End Screen */}
+			{gameState === "gameOver" && endScreenData && (
 				<div className="text-center space-y-4">
-					<div className="text-2xl font-bold text-green-600">🎉 Correct!</div>
-					<div className="text-gray-800">
-						"{currentTrack?.name}" by {currentTrack?.artist}
+					<div className="text-3xl font-bold text-purple-600">🏁 Round Complete!</div>
+					
+					<div className="bg-gray-50 p-4 rounded-lg">
+						<div className="text-xl text-gray-800 mb-2">
+							{endScreenData.wasCorrect ? "🎉 Correct!" : "❌ Game Over"}
+						</div>
+						<div className="text-lg text-gray-700 mb-2">
+							"{endScreenData.track.name}" by {endScreenData.track.artist}
+						</div>
+						<div className="text-sm text-gray-600">
+							Final Score: {endScreenData.finalScore} | Final Streak: {endScreenData.finalStreak}
+						</div>
 					</div>
-					<button
-						onClick={nextLevel}
-						className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold"
-					>
-						Next Level →
-					</button>
-				</div>
-			)}
-
-			{gameState === "incorrect" && (
-				<div className="text-center space-y-4">
-					<div className="text-xl font-semibold text-red-600">❌ Try Again</div>
-					<button
-						onClick={startNewRound}
-						className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-semibold"
-					>
-						🔁 Replay Clip
-					</button>
-				</div>
-			)}
-
-			{gameState === "gameOver" && (
-				<div className="text-center space-y-4">
-					<div className="text-3xl font-bold text-purple-600">🏆 Game Complete!</div>
-					<div className="text-xl text-gray-800">Final Score: {gameStats.score}</div>
-					<div className="text-gray-600">
-						Correct: {gameStats.correctGuesses}/{gameStats.totalGuesses}
+					
+					<div className="flex gap-2 justify-center">
+						<button
+							onClick={startNewGame}
+							className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold"
+						>
+							New Game
+						</button>
+						<button
+							onClick={startNewRound}
+							className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold"
+						>
+							Next Round
+						</button>
 					</div>
-					<button
-						onClick={resetGame}
-						className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-semibold"
-					>
-						Play Again
-					</button>
 				</div>
 			)}
 
