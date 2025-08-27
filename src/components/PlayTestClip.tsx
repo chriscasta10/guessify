@@ -79,6 +79,8 @@ export function GuessifyGame() {
 	const isPlayingRef = useRef(false);
 	const hasPlayedRef = useRef(false);
 	const currentLevelRef = useRef<GameLevel | null>(null);
+	// CRITICAL FIX: Store the exact snippet position for replay
+	const currentSnippetPositionRef = useRef<number>(0);
 
 	useEffect(() => {
 		console.log("PlayTestClip: useEffect triggered");
@@ -179,6 +181,7 @@ export function GuessifyGame() {
 		clearPlaybackTimeout();
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
+		currentSnippetPositionRef.current = 0; // Reset snippet position
 
 		// Load tracks on-demand if we don't have any
 		if (tracks.length === 0) {
@@ -228,7 +231,19 @@ export function GuessifyGame() {
 
 		const currentLevel = GAME_LEVELS[currentRound.currentLevelIndex];
 		const track = currentRound.track;
-		const randomStart = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
+		
+		// CRITICAL FIX: Use stored snippet position for replay, or generate new one
+		let snippetPosition: number;
+		if (hasPlayedRef.current && currentSnippetPositionRef.current > 0) {
+			// Replay: use the same snippet position
+			snippetPosition = currentSnippetPositionRef.current;
+			console.log("Replaying same snippet at position:", snippetPosition);
+		} else {
+			// First play: generate new random position
+			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
+			currentSnippetPositionRef.current = snippetPosition; // Store for replay
+			console.log("New snippet position:", snippetPosition);
+		}
 
 		setDebugInfo(`Playing ${currentLevel.name} level clip...`);
 		setGameState("playing");
@@ -259,9 +274,12 @@ export function GuessifyGame() {
 					console.log("SDK connected, attempting to seek and play");
 					
 					try {
-						await seek(randomStart);
+						// CRITICAL FIX: Add small delay to ensure device ID is available
+						await new Promise(resolve => setTimeout(resolve, 100));
+						
+						await seek(snippetPosition);
 						setAudioDebug("Seek successful, now playing...");
-						await play(track.uri, randomStart);
+						await play(track.uri, snippetPosition);
 						
 						setAudioDebug(`SDK play() called, waiting for playback to actually start...`);
 						console.log(`SDK playback initiated, waiting for player_state_changed event`);
@@ -290,7 +308,7 @@ export function GuessifyGame() {
 				}
 				
 				// Reset audio and set position
-				audioRef.current.currentTime = randomStart / 1000;
+				audioRef.current.currentTime = snippetPosition / 1000;
 				audioRef.current.volume = 0.8;
 				
 				// Add event listeners for debugging
