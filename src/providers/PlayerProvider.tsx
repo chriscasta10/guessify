@@ -119,12 +119,40 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			playerRef.current.addListener("player_state_changed", (state: unknown) => {
 				console.log("PlayerProvider: player state changed:", state);
 				
-				// Check if playback has started
+				// Log the full state for debugging
 				const playerState = state as any;
+				console.log("PlayerProvider: Full state details:", {
+					is_playing: playerState?.is_playing,
+					position: playerState?.position,
+					duration: playerState?.duration,
+					track: playerState?.track,
+					device_id: playerState?.device_id
+				});
+				
+				// Check if playback has started
 				if (playerState && playerState.is_playing) {
 					console.log("PlayerProvider: Playback started! Notifying listeners...");
+					console.log("PlayerProvider: Number of listeners:", listeners.length);
 					// Notify all listeners that playback has started
-					listeners.forEach((l) => l(state));
+					listeners.forEach((l, index) => {
+						console.log(`PlayerProvider: Notifying listener ${index}`);
+						try {
+							l(state);
+						} catch (e) {
+							console.error(`PlayerProvider: Error in listener ${index}:`, e);
+						}
+					});
+				} else {
+					console.log("PlayerProvider: State change but not playing, still notifying listeners...");
+					// Still notify listeners for all state changes
+					listeners.forEach((l, index) => {
+						console.log(`PlayerProvider: Notifying listener ${index} for non-playing state`);
+						try {
+							l(state);
+						} catch (e) {
+							console.error(`PlayerProvider: Error in listener ${index}:`, e);
+						}
+					});
 				}
 			});
 			

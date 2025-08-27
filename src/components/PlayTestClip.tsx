@@ -90,8 +90,17 @@ export function GuessifyGame() {
 		const handlePlayerStateChange = (state: unknown) => {
 			console.log("GuessifyGame: Player state changed:", state);
 			
-			// Check if this is a playback start event and we're waiting for it
+			// Log the full state object for debugging
 			const playerState = state as any;
+			console.log("GuessifyGame: Full player state:", {
+				is_playing: playerState?.is_playing,
+				position: playerState?.position,
+				duration: playerState?.duration,
+				track: playerState?.track,
+				device_id: playerState?.device_id
+			});
+			
+			// Check if this is a playback start event and we're waiting for it
 			if (playerState && playerState.is_playing && isPlayingRef.current && currentLevelRef.current) {
 				console.log("GuessifyGame: SDK playback started! Starting timeout now...");
 				setAudioDebug(`SDK playback confirmed, starting ${formatTime(currentLevelRef.current.duration)} timeout...`);
@@ -110,10 +119,23 @@ export function GuessifyGame() {
 						console.log("SDK pause failed during timeout, but that's okay:", e);
 					}
 				});
+			} else {
+				console.log("GuessifyGame: State change ignored - conditions not met:", {
+					hasState: !!playerState,
+					isPlaying: playerState?.is_playing,
+					isPlayingRef: isPlayingRef.current,
+					hasCurrentLevel: !!currentLevelRef.current
+				});
 			}
 		};
 
+		console.log("GuessifyGame: Setting up player state change listener");
 		onStateChange(handlePlayerStateChange);
+		
+		// Return cleanup function
+		return () => {
+			console.log("GuessifyGame: Cleaning up player state change listener");
+		};
 	}, [onStateChange, startPlaybackTimeout, pause]);
 
 	useEffect(() => {
