@@ -42,6 +42,11 @@ interface SearchResult {
 	uri: string;
 }
 
+interface UserProfile {
+	display_name: string;
+	images: Array<{ url: string }>;
+}
+
 export function GuessifyGame() {
 	const { initPlayer, connect, play, pause, seek, isSdkAvailable, startPlaybackTimeout, clearPlaybackTimeout, onStateChange } = usePlayer();
 	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(50);
@@ -67,6 +72,7 @@ export function GuessifyGame() {
 			bestStreak: 0,
 		};
 	});
+	const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 	const [debugInfo, setDebugInfo] = useState<string>("");
 	const [audioDebug, setAudioDebug] = useState<string>("");
 	const [endScreenData, setEndScreenData] = useState<{
@@ -75,6 +81,7 @@ export function GuessifyGame() {
 		track: any;
 		wasCorrect: boolean;
 	} | null>(null);
+	const [buttonAnimation, setButtonAnimation] = useState<string>("");
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const isPlayingRef = useRef(false);
 	const hasPlayedRef = useRef(false);
@@ -85,7 +92,22 @@ export function GuessifyGame() {
 	useEffect(() => {
 		console.log("PlayTestClip: useEffect triggered");
 		void initPlayer();
+		// Load user profile
+		void loadUserProfile();
 	}, [initPlayer]);
+
+	// Load user profile from Spotify
+	const loadUserProfile = useCallback(async () => {
+		try {
+			const response = await fetch('/api/me');
+			if (response.ok) {
+				const profile = await response.json();
+				setUserProfile(profile);
+			}
+		} catch (error) {
+			console.error('Failed to load user profile:', error);
+		}
+	}, []);
 
 	// Listen for player state changes to start timeout when SDK playback begins
 	useEffect(() => {
@@ -435,6 +457,7 @@ export function GuessifyGame() {
 			});
 			
 			setDebugInfo(`Correct! +${pointsEarned} points for ${currentLevel.name} level.`);
+			setButtonAnimation("correct");
 			
 			// End round and show end screen
 			setEndScreenData({
@@ -446,6 +469,7 @@ export function GuessifyGame() {
 			setGameState("gameOver");
 		} else {
 			// Wrong guess - end run immediately
+			setButtonAnimation("incorrect");
 			setEndScreenData({
 				finalScore: gameStats.currentScore,
 				finalStreak: gameStats.currentStreak,
@@ -479,7 +503,7 @@ export function GuessifyGame() {
 	}, []);
 
 	const startNewGame = useCallback(() => {
-		// Reset for new game
+		// Reset for new game - CRITICAL FIX: Reset current score and streak
 		setGameStats(prev => ({
 			...prev,
 			currentScore: 0,
@@ -489,6 +513,7 @@ export function GuessifyGame() {
 		setSelectedSearchResult(null);
 		setEndScreenData(null);
 		setGameState("waiting");
+		setButtonAnimation("");
 		setDebugInfo("New game started! Click 'Start Round' to begin.");
 	}, []);
 
@@ -511,226 +536,256 @@ export function GuessifyGame() {
 	};
 
 	return (
-		<div className="flex flex-col gap-4 max-w-2xl mx-auto">
-			{/* Game Header */}
-			<div className="text-center">
-				<h2 className="text-2xl font-bold text-gray-800 mb-2">🎵 Guessify</h2>
-				<p className="text-gray-600">Test your music memory with your Spotify likes!</p>
-			</div>
-
-			{/* Game Stats HUD */}
-			<div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
-				<div className="text-center">
-					<div className="text-2xl font-bold text-blue-600">{gameStats.currentScore}</div>
-					<div className="text-sm text-gray-600">Current Score</div>
-				</div>
-				<div className="text-center">
-					<div className="text-2xl font-bold text-green-600">{gameStats.currentStreak}</div>
-					<div className="text-sm text-gray-600">Current Streak</div>
-				</div>
-			</div>
-
-			{/* High Score Display */}
-			<div className="grid grid-cols-2 gap-4 bg-purple-50 p-3 rounded-lg">
-				<div className="text-center">
-					<div className="text-lg font-bold text-purple-600">{gameStats.highScore}</div>
-					<div className="text-xs text-gray-600">High Score</div>
-				</div>
-				<div className="text-center">
-					<div className="text-lg font-bold text-purple-600">{gameStats.bestStreak}</div>
-					<div className="text-xs text-gray-600">Best Streak</div>
-				</div>
-			</div>
-
-			{/* Loading Progress */}
-			{loading && (
-				<div className="bg-blue-50 p-4 rounded-lg">
-					<div className="text-center text-blue-800 mb-2">
-						{getLoadingMessage()} {loadingProgress.loaded}/{loadingProgress.total || '?'}
-					</div>
-					<div className="w-full bg-blue-200 rounded-full h-2">
-						<div 
-							className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-							style={{ width: `${loadingProgress.total ? (loadingProgress.loaded / loadingProgress.total) * 100 : 0}%` }}
-						></div>
-					</div>
+		<div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-white">
+			{/* User Profile Header */}
+			{userProfile && (
+				<div className="absolute top-4 right-4 flex items-center space-x-3 bg-black/50 backdrop-blur-sm rounded-full px-4 py-2">
+					<img 
+						src={userProfile.images[0]?.url || '/default-avatar.png'} 
+						alt={userProfile.display_name}
+						className="w-8 h-8 rounded-full"
+					/>
+					<span className="text-sm font-medium text-white">{userProfile.display_name}</span>
 				</div>
 			)}
 
-			{/* Game Controls */}
-			{gameState === "waiting" && (
-				<div className="text-center space-y-3">
-					{!currentRound ? (
-						<button 
-							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48 h-14"
-							onClick={startNewRound}
-							disabled={loading}
-						>
-							{loading ? 'Loading...' : 'Start Round'}
-						</button>
-					) : (
-						<button 
-							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48 h-14"
-							onClick={playCurrentLevel}
-						>
-							Play {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
-						</button>
-					)}
-					<div className="text-sm text-gray-600">
-						{!currentRound ? "Start a new round with a random song!" : "Ready to play!"}
+			<div className="container mx-auto px-4 py-8 max-w-4xl">
+				{/* Game Header */}
+				<div className="text-center mb-8">
+					<h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent mb-4">
+						🎵 Guessify
+					</h1>
+					<p className="text-gray-300 text-lg">Test your music memory with your Spotify likes!</p>
+				</div>
+
+				{/* Game Stats HUD */}
+				<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+					<div className="bg-gradient-to-r from-green-500/20 to-green-600/20 backdrop-blur-sm p-4 rounded-xl border border-green-500/30">
+						<div className="text-3xl font-bold text-green-400">{gameStats.currentScore}</div>
+						<div className="text-sm text-green-300">Current Score</div>
+					</div>
+					<div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 backdrop-blur-sm p-4 rounded-xl border border-blue-500/30">
+						<div className="text-3xl font-bold text-blue-400">{gameStats.currentStreak}</div>
+						<div className="text-sm text-blue-300">Current Streak</div>
+					</div>
+					<div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 backdrop-blur-sm p-4 rounded-xl border border-purple-500/30">
+						<div className="text-2xl font-bold text-purple-400">{gameStats.highScore}</div>
+						<div className="text-sm text-purple-300">High Score</div>
+					</div>
+					<div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 backdrop-blur-sm p-4 rounded-xl border border-yellow-500/30">
+						<div className="text-2xl font-bold text-yellow-400">{gameStats.bestStreak}</div>
+						<div className="text-sm text-yellow-300">Best Streak</div>
 					</div>
 				</div>
-			)}
 
-			{/* Game State Display */}
-			{gameState === "playing" && currentRound && (
-				<div className="text-center space-y-3">
-					<div className="text-lg font-semibold text-gray-800 mb-2">🎵 Playing...</div>
-					<div className="text-sm text-gray-600">
-						{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
+				{/* Loading Progress */}
+				{loading && (
+					<div className="bg-black/50 backdrop-blur-sm p-6 rounded-xl border border-gray-700 mb-8">
+						<div className="text-center text-gray-300 mb-4">
+							{getLoadingMessage()} {loadingProgress.loaded}/{loadingProgress.total || '?'}
+						</div>
+						<div className="w-full bg-gray-700 rounded-full h-3">
+							<div 
+								className="bg-gradient-to-r from-green-400 to-blue-500 h-3 rounded-full transition-all duration-300"
+								style={{ width: `${loadingProgress.total ? (loadingProgress.loaded / loadingProgress.total) * 100 : 0}%` }}
+							></div>
+						</div>
 					</div>
-					<button
-						onClick={() => {
-							console.log("Manual stop button clicked");
-							if (isPlayingRef.current) {
-								clearPlaybackTimeout();
-								isPlayingRef.current = false;
-								setGameState("guessing");
-								setAudioDebug("Manual stop - time to guess!");
-								
-								// Force stop audio
-								if (audioRef.current) {
-									audioRef.current.pause();
-									audioRef.current.currentTime = 0;
-								}
-								try {
-									pause();
-								} catch (e) {
-									console.log("Manual SDK pause failed:", e);
-								}
-							}
-						}}
-						className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold w-32 h-12"
-					>
-						🛑 Force Stop (Debug)
-					</button>
-				</div>
-			)}
+				)}
 
-			{/* Guess Input */}
-			{gameState === "guessing" && currentRound && (
-				<div className="space-y-4">
-					<div className="text-center">
-						<div className="text-lg font-semibold text-gray-800 mb-2">🎯 What song was that?</div>
-						<div className="text-sm text-gray-600">
+				{/* Game Controls */}
+				{gameState === "waiting" && (
+					<div className="text-center space-y-6">
+						{!currentRound ? (
+							<button 
+								className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
+								onClick={startNewRound}
+								disabled={loading}
+							>
+								{loading ? 'Loading...' : 'Start Round'}
+							</button>
+						) : (
+							<button 
+								className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
+								onClick={playCurrentLevel}
+							>
+								Play {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
+							</button>
+						)}
+						<div className="text-gray-400">
+							{!currentRound ? "Start a new round with a random song!" : "Ready to play!"}
+						</div>
+					</div>
+				)}
+
+				{/* Game State Display */}
+				{gameState === "playing" && currentRound && (
+					<div className="text-center space-y-6">
+						<div className="text-2xl font-semibold text-white mb-4">🎵 Playing...</div>
+						<div className="text-lg text-gray-300">
 							{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
 						</div>
-					</div>
-					
-					<div className="space-y-3">
-						<SearchAutocomplete
-							onSelect={handleSearchSelect}
-							placeholder="Search for a song..."
-							className="w-full"
-						/>
-						
-						{selectedSearchResult && (
-							<div className="bg-green-50 p-3 rounded-lg border border-green-200">
-								<div className="text-sm text-green-800">
-									<strong>Selected:</strong> "{selectedSearchResult.name}" by {selectedSearchResult.artist}
-								</div>
-							</div>
-						)}
-						
-						<div className="grid grid-cols-2 gap-2">
-							<button
-								onClick={submitGuess}
-								disabled={!selectedSearchResult}
-								className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
-							>
-								Submit Guess
-							</button>
-							<button
-								onClick={playCurrentLevel}
-								className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
-							>
-								🔁 Replay
-							</button>
-							<button
-								onClick={nextLevel}
-								disabled={currentRound.currentLevelIndex >= GAME_LEVELS.length - 1}
-								className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
-							>
-								⏰ More Time
-							</button>
-							<button
-								onClick={giveUp}
-								className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
-							>
-								🏳️ Give Up
-							</button>
-						</div>
-					</div>
-					
-					<div className="text-sm text-gray-500 text-center">
-						Attempts: {currentRound.attempts + 1} | Level: {getCurrentLevel()?.name} ({formatTime(getCurrentLevel()?.duration || 0)})
-					</div>
-				</div>
-			)}
-
-			{/* End Screen */}
-			{gameState === "gameOver" && endScreenData && (
-				<div className="text-center space-y-4">
-					<div className="text-3xl font-bold text-purple-600">🏁 Round Complete!</div>
-					
-					<div className="bg-gray-50 p-4 rounded-lg">
-						<div className="text-xl text-gray-800 mb-2">
-							{endScreenData.wasCorrect ? "🎉 Correct!" : "❌ Game Over"}
-						</div>
-						<div className="text-lg text-gray-700 mb-2">
-							"{endScreenData.track.name}" by {endScreenData.track.artist}
-						</div>
-						<div className="text-sm text-gray-600">
-							Final Score: {endScreenData.finalScore} | Final Streak: {endScreenData.finalStreak}
-						</div>
-					</div>
-					
-					<div className="flex gap-2 justify-center">
-						{/* CRITICAL FIX: Only show New Game for incorrect guesses, Next Round for correct */}
-						{!endScreenData.wasCorrect && (
-							<button
-								onClick={startNewGame}
-								className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold w-32"
-							>
-								New Game
-							</button>
-						)}
 						<button
-							onClick={startNewRound}
-							className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold w-32"
+							onClick={() => {
+								console.log("Manual stop button clicked");
+								if (isPlayingRef.current) {
+									clearPlaybackTimeout();
+									isPlayingRef.current = false;
+									setGameState("guessing");
+									setAudioDebug("Manual stop - time to guess!");
+									
+									// Force stop audio
+									if (audioRef.current) {
+										audioRef.current.pause();
+										audioRef.current.currentTime = 0;
+									}
+									try {
+										pause();
+									} catch (e) {
+										console.log("Manual SDK pause failed:", e);
+									}
+								}
+							}}
+							className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-red-500/25 transition-all duration-300"
 						>
-							{endScreenData.wasCorrect ? "Next Round" : "Try Again"}
+							🛑 Force Stop
 						</button>
 					</div>
-				</div>
-			)}
+				)}
 
-			{/* Debug Info - Only show non-spoiler info */}
-			{debugInfo && (
-				<div className="text-sm text-gray-600 bg-gray-100 p-3 rounded-lg">
-					{debugInfo}
+				{/* Guess Input */}
+				{gameState === "guessing" && currentRound && (
+					<div className="space-y-6">
+						<div className="text-center">
+							<div className="text-2xl font-semibold text-white mb-4">🎯 What song was that?</div>
+							<div className="text-lg text-gray-300">
+								{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
+							</div>
+						</div>
+						
+						<div className="space-y-4">
+							<SearchAutocomplete
+								onSelect={handleSearchSelect}
+								placeholder="Search for a song..."
+								className="w-full"
+							/>
+							
+							{selectedSearchResult && (
+								<div className="bg-green-500/20 backdrop-blur-sm p-4 rounded-xl border border-green-500/30">
+									<div className="text-sm text-green-300">
+										<strong>Selected:</strong> "{selectedSearchResult.name}" by {selectedSearchResult.artist}
+									</div>
+								</div>
+							)}
+							
+							<div className="grid grid-cols-2 gap-3">
+								<button
+									onClick={submitGuess}
+									disabled={!selectedSearchResult}
+									className={`bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-600 disabled:to-gray-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105 ${buttonAnimation === "correct" ? "animate-pulse bg-green-500" : ""} ${buttonAnimation === "incorrect" ? "animate-pulse bg-red-500" : ""}`}
+								>
+									Submit Guess
+								</button>
+								<button
+									onClick={playCurrentLevel}
+									className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-gray-500/25 transition-all duration-300 transform hover:scale-105"
+								>
+									🔁 Replay
+								</button>
+								<button
+									onClick={nextLevel}
+									disabled={currentRound.currentLevelIndex >= GAME_LEVELS.length - 1}
+									className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-600 disabled:to-gray-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-orange-500/25 transition-all duration-300 transform hover:scale-105"
+								>
+									⏰ More Time
+								</button>
+								<button
+									onClick={giveUp}
+									className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-red-500/25 transition-all duration-300 transform hover:scale-105"
+								>
+									🏳️ Give Up
+								</button>
+							</div>
+						</div>
+						
+						<div className="text-center text-gray-400">
+							Attempts: {currentRound.attempts + 1} | Level: {getCurrentLevel()?.name} ({formatTime(getCurrentLevel()?.duration || 0)})
+						</div>
+					</div>
+				)}
+
+				{/* End Screen */}
+				{gameState === "gameOver" && endScreenData && (
+					<div className="text-center space-y-6">
+						<div className="text-4xl font-bold text-purple-400">🏁 Round Complete!</div>
+						
+						<div className="bg-black/50 backdrop-blur-sm p-6 rounded-xl border border-gray-700">
+							<div className="text-2xl text-white mb-4">
+								{endScreenData.wasCorrect ? "🎉 Correct!" : "❌ Game Over"}
+							</div>
+							
+							{/* Artist Image and Track Info */}
+							<div className="flex items-center justify-center space-x-4 mb-4">
+								{endScreenData.track.album?.images?.[0]?.url && (
+									<img 
+										src={endScreenData.track.album.images[0].url} 
+										alt="Album Art"
+										className="w-16 h-16 rounded-lg shadow-lg"
+									/>
+								)}
+								<div className="text-left">
+									<div className="text-lg font-semibold text-white">
+										"{endScreenData.track.name}"
+									</div>
+									<div className="text-gray-300">
+										by {endScreenData.track.artist}
+									</div>
+								</div>
+							</div>
+							
+							<div className="text-gray-300">
+								Final Score: <span className="text-white font-semibold">{endScreenData.finalScore}</span> | 
+								Final Streak: <span className="text-white font-semibold">{endScreenData.finalStreak}</span>
+							</div>
+						</div>
+						
+						<div className="flex gap-4 justify-center">
+							{/* CRITICAL FIX: Only show New Game for incorrect guesses, Next Round for correct */}
+							{!endScreenData.wasCorrect && (
+								<button
+									onClick={startNewGame}
+									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
+								>
+									New Game
+								</button>
+							)}
+							<button
+								onClick={startNewRound}
+								className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105"
+							>
+								{endScreenData.wasCorrect ? "Next Round" : "Try Again"}
+							</button>
+						</div>
+					</div>
+				)}
+
+				{/* Debug Info - Only show non-spoiler info */}
+				{debugInfo && (
+					<div className="text-sm text-gray-400 bg-black/30 backdrop-blur-sm p-4 rounded-xl border border-gray-700 mt-8">
+						{debugInfo}
+					</div>
+				)}
+				
+				{audioDebug && (
+					<div className="text-sm text-blue-400 bg-blue-500/10 backdrop-blur-sm p-4 rounded-xl border border-blue-500/30 mt-4">
+						Audio Debug: {audioDebug}
+					</div>
+				)}
+				
+				<div className="text-xs text-gray-500 text-center mt-8">
+					Debug: {tracks.length} tracks, SDK: {isSdkAvailable ? 'Yes' : 'No'}, Loading: {loading ? 'Yes' : 'No'}
+					{error && `, Error: ${error}`}
 				</div>
-			)}
-			
-			{audioDebug && (
-				<div className="text-sm text-blue-600 bg-blue-100 p-3 rounded-lg">
-					Audio Debug: {audioDebug}
-				</div>
-			)}
-			
-			<div className="text-xs text-gray-500 text-center">
-				Debug: {tracks.length} tracks, SDK: {isSdkAvailable ? 'Yes' : 'No'}, Loading: {loading ? 'Yes' : 'No'}
-				{error && `, Error: ${error}`}
 			</div>
 		</div>
 	);
