@@ -256,6 +256,28 @@ export function GuessifyGame() {
 			// Always try Spotify SDK first (works for all tracks)
 			if (isSdkAvailable) {
 				console.log("Using Spotify SDK");
+				
+				// CRITICAL FIX: Only connect if we haven't already
+				let connected = false;
+				if (hasPlayedRef.current && currentSnippetPositionRef.current > 0) {
+					// Replay: try to use existing connection
+					console.log("Replay detected - attempting to use existing connection");
+					try {
+						// Try to seek and play directly without reconnecting
+						await seek(snippetPosition);
+						setAudioDebug("Seek successful with existing connection, now playing...");
+						await play(track.uri, snippetPosition);
+						
+						setAudioDebug(`SDK replay initiated, waiting for playback to start...`);
+						console.log(`SDK replay initiated, waiting for player_state_changed event`);
+						return; // Success - PlayerProvider will handle the timeout
+					} catch (replayError) {
+						console.log("Replay with existing connection failed, will reconnect:", replayError);
+						// Fall through to normal connection flow
+					}
+				}
+				
+				// First play or replay failed: establish new connection
 				setAudioDebug("Connecting to Spotify SDK...");
 				
 				setAudioDebug("Step 1: Checking SDK availability...");
@@ -263,7 +285,7 @@ export function GuessifyGame() {
 				console.log("Window.Spotify exists:", typeof window !== 'undefined' && !!window.Spotify);
 				
 				setAudioDebug("Step 2: Attempting to connect...");
-				const connected = await connect();
+				connected = await connect();
 				console.log("SDK connection result:", connected);
 				
 				if (!connected) {
