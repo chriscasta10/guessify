@@ -399,6 +399,10 @@ export function GuessifyGame() {
 			const nextLevel = GAME_LEVELS[currentRound.currentLevelIndex + 1];
 			setDebugInfo(`Level increased to ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
 			
+			// CRITICAL FIX: Reset snippet position for new level and auto-play immediately
+			currentSnippetPositionRef.current = 0; // Reset for new level
+			hasPlayedRef.current = false; // Reset play state
+			
 			// Auto-play the new level after a short delay
 			setTimeout(() => {
 				void playCurrentLevel();
@@ -558,7 +562,7 @@ export function GuessifyGame() {
 				<div className="text-center space-y-3">
 					{!currentRound ? (
 						<button 
-							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48"
+							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48 h-14"
 							onClick={startNewRound}
 							disabled={loading}
 						>
@@ -566,7 +570,7 @@ export function GuessifyGame() {
 						</button>
 					) : (
 						<button 
-							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48"
+							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48 h-14"
 							onClick={playCurrentLevel}
 						>
 							Play {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
@@ -606,7 +610,7 @@ export function GuessifyGame() {
 								}
 							}
 						}}
-						className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold"
+						className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold w-32 h-12"
 					>
 						🛑 Force Stop (Debug)
 					</button>
@@ -642,26 +646,26 @@ export function GuessifyGame() {
 							<button
 								onClick={submitGuess}
 								disabled={!selectedSearchResult}
-								className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12"
+								className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
 							>
 								Submit Guess
 							</button>
 							<button
 								onClick={playCurrentLevel}
-								className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold h-12"
+								className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
 							>
 								🔁 Replay
 							</button>
 							<button
 								onClick={nextLevel}
 								disabled={currentRound.currentLevelIndex >= GAME_LEVELS.length - 1}
-								className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12"
+								className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
 							>
 								⏰ More Time
 							</button>
 							<button
 								onClick={giveUp}
-								className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold h-12"
+								className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold h-12 w-full"
 							>
 								🏳️ Give Up
 							</button>
@@ -692,17 +696,20 @@ export function GuessifyGame() {
 					</div>
 					
 					<div className="flex gap-2 justify-center">
-						<button
-							onClick={startNewGame}
-							className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold w-32"
-						>
-							New Game
-						</button>
+						{/* CRITICAL FIX: Only show New Game for incorrect guesses, Next Round for correct */}
+						{!endScreenData.wasCorrect && (
+							<button
+								onClick={startNewGame}
+								className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold w-32"
+							>
+								New Game
+							</button>
+						)}
 						<button
 							onClick={startNewRound}
 							className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold w-32"
 						>
-							Next Round
+							{endScreenData.wasCorrect ? "Next Round" : "Try Again"}
 						</button>
 					</div>
 				</div>
