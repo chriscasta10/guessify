@@ -16,7 +16,7 @@ type SpotifySavedTracksResponse = {
 	total?: number; // Added for total count
 };
 
-export function useLikedTracks(limit = 100) { // Increased from 20 to 100
+export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	const [tracks, setTracks] = useState<LikedTrack[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -47,6 +47,17 @@ export function useLikedTracks(limit = 100) { // Increased from 20 to 100
 		if (!res.ok) {
 			const errorText = await res.text();
 			console.error("useLikedTracks: API error", { status: res.status, error: errorText });
+			
+			// Try to parse the error for better debugging
+			try {
+				const errorJson = JSON.parse(errorText);
+				if (errorJson.error && errorJson.error.includes("Spotify API error: 400")) {
+					throw new Error("Spotify API limit exceeded - reducing batch size");
+				}
+			} catch (parseError) {
+				// Continue with original error
+			}
+			
 			throw new Error(`Failed to fetch: ${res.status} - ${errorText}`);
 		}
 		

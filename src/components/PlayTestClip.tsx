@@ -28,7 +28,7 @@ interface SearchResult {
 
 export function GuessifyGame() {
 	const { initPlayer, connect, play, pause, seek, isSdkAvailable } = usePlayer();
-	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(100);
+	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(50); // Spotify API max limit
 	const [levelIndex, setLevelIndex] = useState(0);
 	const [gameState, setGameState] = useState<GameState>("waiting");
 	const [currentTrack, setCurrentTrack] = useState<any>(null);
