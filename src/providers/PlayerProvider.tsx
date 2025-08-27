@@ -10,6 +10,9 @@ type PlayerContextValue = {
 	seek: (ms: number) => Promise<void>;
 	onStateChange: (cb: (state: unknown) => void) => void;
 	isSdkAvailable: boolean;
+	// Add timeout management
+	startPlaybackTimeout: (durationMs: number, onTimeout: () => void) => void;
+	clearPlaybackTimeout: () => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
@@ -36,6 +39,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	const [ready, setReady] = useState(false);
 	const [deviceId, setDeviceId] = useState<string>("");
 	const [listeners, setListeners] = useState<Array<(s: unknown) => void>>([]);
+	const playbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 	const initPlayer = useCallback(async () => {
 		if (ready) return;
@@ -49,6 +53,29 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		});
 		setReady(true);
 	}, [ready]);
+
+	// Timeout management functions
+	const startPlaybackTimeout = useCallback((durationMs: number, onTimeout: () => void) => {
+		// Clear any existing timeout
+		if (playbackTimeoutRef.current) {
+			clearTimeout(playbackTimeoutRef.current);
+		}
+		
+		console.log(`PlayerProvider: Starting playback timeout for ${durationMs}ms`);
+		playbackTimeoutRef.current = setTimeout(() => {
+			console.log("PlayerProvider: Playback timeout triggered!");
+			onTimeout();
+			playbackTimeoutRef.current = null;
+		}, durationMs);
+	}, []);
+
+	const clearPlaybackTimeout = useCallback(() => {
+		if (playbackTimeoutRef.current) {
+			console.log("PlayerProvider: Clearing playback timeout");
+			clearTimeout(playbackTimeoutRef.current);
+			playbackTimeoutRef.current = null;
+		}
+	}, []);
 
 	const connect = useCallback(async () => {
 		console.log("PlayerProvider: connect() called");
@@ -87,9 +114,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			});
 			
 			console.log("PlayerProvider: player created, adding listeners...");
+			
+			// CRITICAL: Handle player_state_changed to detect when playback actually starts
 			playerRef.current.addListener("player_state_changed", (state: unknown) => {
 				console.log("PlayerProvider: player state changed:", state);
-				listeners.forEach((l) => l(state));
+				
+				// Check if playback has started
+				const playerState = state as any;
+				if (playerState && playerState.is_playing) {
+					console.log("PlayerProvider: Playback started! Notifying listeners...");
+					// Notify all listeners that playback has started
+					listeners.forEach((l) => l(state));
+				}
 			});
 			
 			// Create a promise to wait for the device ID
@@ -252,6 +288,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		seek,
 		onStateChange,
 		isSdkAvailable: ready,
+		startPlaybackTimeout,
+		clearPlaybackTimeout,
 	};
 
 	return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
