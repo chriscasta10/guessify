@@ -78,6 +78,7 @@ export function GuessifyGame() {
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const playbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const isPlayingRef = useRef(false);
+	const hasPlayedRef = useRef(false);
 
 	useEffect(() => {
 		console.log("PlayTestClip: useEffect triggered");
@@ -117,10 +118,12 @@ export function GuessifyGame() {
 			error 
 		});
 
-		// Clear any existing timeout
+		// Clear any existing timeout and reset state
 		if (playbackTimeoutRef.current) {
 			clearTimeout(playbackTimeoutRef.current);
 		}
+		isPlayingRef.current = false;
+		hasPlayedRef.current = false;
 
 		// Load tracks on-demand if we don't have any
 		if (tracks.length === 0) {
@@ -162,6 +165,12 @@ export function GuessifyGame() {
 	const playCurrentLevel = useCallback(async () => {
 		if (!currentRound) return;
 
+		// Prevent multiple simultaneous plays
+		if (isPlayingRef.current) {
+			console.log("Already playing, ignoring play request");
+			return;
+		}
+
 		// Clear any existing timeout
 		if (playbackTimeoutRef.current) {
 			clearTimeout(playbackTimeoutRef.current);
@@ -175,6 +184,21 @@ export function GuessifyGame() {
 		setGameState("playing");
 		setAudioDebug(`Playing ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
 		isPlayingRef.current = true;
+		hasPlayedRef.current = true;
+
+		// Set a guaranteed timeout to stop playback
+		playbackTimeoutRef.current = setTimeout(() => {
+			console.log("Playback timeout triggered - stopping audio");
+			isPlayingRef.current = false;
+			setGameState("guessing");
+			setAudioDebug("Time's up - time to guess!");
+			
+			// Force stop any playing audio
+			if (audioRef.current) {
+				audioRef.current.pause();
+				audioRef.current.currentTime = 0;
+			}
+		}, currentLevel.duration + 100); // Add small buffer
 
 		try {
 			// Always try Spotify SDK first (works for all tracks)
@@ -203,22 +227,10 @@ export function GuessifyGame() {
 						await play(track.uri, randomStart);
 						
 						setAudioDebug(`Playing via SDK, will stop in ${formatTime(currentLevel.duration)}`);
-						
-						// Set timeout to stop playback
-						playbackTimeoutRef.current = setTimeout(async () => {
-							if (isPlayingRef.current) {
-								await pause();
-								isPlayingRef.current = false;
-								setGameState("guessing");
-								setAudioDebug("SDK playback stopped - time to guess!");
-							}
-						}, currentLevel.duration);
-						
-						return;
+						return; // Success - timeout will handle stopping
 					} catch (playError) {
 						console.error("Error during SDK playback:", playError);
 						setAudioDebug("SDK playback error: " + (playError instanceof Error ? playError.message : 'Unknown'));
-						isPlayingRef.current = false;
 						// Fall through to preview URL
 					}
 				}
@@ -251,29 +263,31 @@ export function GuessifyGame() {
 					await audioRef.current.play();
 					console.log("Audio started playing");
 					setAudioDebug(`Audio play() succeeded, will stop in ${formatTime(currentLevel.duration)}`);
-					
-					// Set timeout to stop after the specified duration
-					playbackTimeoutRef.current = setTimeout(() => {
-						if (audioRef.current && isPlayingRef.current) {
-							audioRef.current.pause();
-							console.log("Audio stopped");
-							setAudioDebug("Preview playback stopped - time to guess!");
-							isPlayingRef.current = false;
-						}
-						setGameState("guessing");
-					}, currentLevel.duration);
+					return; // Success - timeout will handle stopping
 				} catch (playError) {
 					console.error("Error playing audio:", playError);
 					setDebugInfo(`Audio playback error: ${playError instanceof Error ? playError.message : 'Unknown error'}`);
 					setAudioDebug("Play error: " + (playError instanceof Error ? playError.message : 'Unknown'));
 					setGameState("waiting");
 					isPlayingRef.current = false;
+					
+					// Clear timeout since we failed
+					if (playbackTimeoutRef.current) {
+						clearTimeout(playbackTimeoutRef.current);
+						playbackTimeoutRef.current = null;
+					}
 				}
 			} else {
 				setDebugInfo("No preview URL available for this track");
 				setAudioDebug("No preview URL - can't play this track");
 				setGameState("waiting");
 				isPlayingRef.current = false;
+				
+				// Clear timeout since we can't play
+				if (playbackTimeoutRef.current) {
+					clearTimeout(playbackTimeoutRef.current);
+					playbackTimeoutRef.current = null;
+				}
 			}
 		} catch (err) {
 			console.error("Error playing clip:", err);
@@ -281,6 +295,12 @@ export function GuessifyGame() {
 			setAudioDebug("General error: " + (err instanceof Error ? err.message : 'Unknown'));
 			setGameState("waiting");
 			isPlayingRef.current = false;
+			
+			// Clear timeout since we failed
+			if (playbackTimeoutRef.current) {
+				clearTimeout(playbackTimeoutRef.current);
+				playbackTimeoutRef.current = null;
+			}
 		}
 	}, [currentRound, connect, isSdkAvailable, pause, play, seek]);
 
@@ -298,10 +318,10 @@ export function GuessifyGame() {
 			const nextLevel = GAME_LEVELS[currentRound.currentLevelIndex + 1];
 			setDebugInfo(`Level increased to ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
 			
-			// Auto-play the new level
+			// Auto-play the new level after a short delay
 			setTimeout(() => {
 				void playCurrentLevel();
-			}, 500);
+			}, 300);
 		}
 	}, [currentRound, playCurrentLevel]);
 
@@ -457,7 +477,7 @@ export function GuessifyGame() {
 				<div className="text-center space-y-3">
 					{!currentRound ? (
 						<button 
-							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
+							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48"
 							onClick={startNewRound}
 							disabled={loading}
 						>
@@ -465,7 +485,7 @@ export function GuessifyGame() {
 						</button>
 					) : (
 						<button 
-							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg"
+							className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-lg text-lg w-48"
 							onClick={playCurrentLevel}
 						>
 							Play {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
@@ -512,30 +532,30 @@ export function GuessifyGame() {
 							</div>
 						)}
 						
-						<div className="flex gap-2">
+						<div className="grid grid-cols-2 gap-2">
 							<button
 								onClick={submitGuess}
 								disabled={!selectedSearchResult}
-								className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-semibold"
+								className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12"
 							>
 								Submit Guess
 							</button>
 							<button
 								onClick={playCurrentLevel}
-								className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold"
+								className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold h-12"
 							>
 								🔁 Replay
 							</button>
 							<button
 								onClick={nextLevel}
 								disabled={currentRound.currentLevelIndex >= GAME_LEVELS.length - 1}
-								className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold"
+								className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-semibold h-12"
 							>
 								⏰ More Time
 							</button>
 							<button
 								onClick={giveUp}
-								className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold"
+								className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold h-12"
 							>
 								🏳️ Give Up
 							</button>
@@ -568,13 +588,13 @@ export function GuessifyGame() {
 					<div className="flex gap-2 justify-center">
 						<button
 							onClick={startNewGame}
-							className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold"
+							className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold w-32"
 						>
 							New Game
 						</button>
 						<button
 							onClick={startNewRound}
-							className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold"
+							className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold w-32"
 						>
 							Next Round
 						</button>
