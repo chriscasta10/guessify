@@ -82,6 +82,7 @@ export function GuessifyGame() {
 		wasCorrect: boolean;
 	} | null>(null);
 	const [buttonAnimation, setButtonAnimation] = useState<string>("");
+	const [hasStartedGame, setHasStartedGame] = useState(false); // Track if game has started
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const isPlayingRef = useRef(false);
 	const hasPlayedRef = useRef(false);
@@ -239,6 +240,7 @@ export function GuessifyGame() {
 		setCurrentRound(newRound);
 		setSelectedSearchResult(null);
 		setGameState("waiting");
+		setHasStartedGame(true); // Mark that game has started
 		setDebugInfo("New round started! Click 'Play' to begin.");
 	}, [tracks, loading, error, loadAll, clearPlaybackTimeout]);
 
@@ -318,8 +320,8 @@ export function GuessifyGame() {
 					console.log("SDK connected, attempting to seek and play");
 					
 					try {
-						// CRITICAL FIX: Add small delay to ensure device ID is available
-						await new Promise(resolve => setTimeout(resolve, 100));
+						// CRITICAL FIX: Add longer delay to ensure device ID is fully available
+						await new Promise(resolve => setTimeout(resolve, 500));
 						
 						await seek(snippetPosition);
 						setAudioDebug("Seek successful, now playing...");
@@ -514,6 +516,7 @@ export function GuessifyGame() {
 		setEndScreenData(null);
 		setGameState("waiting");
 		setButtonAnimation("");
+		setHasStartedGame(false); // Reset game start state
 		setDebugInfo("New game started! Click 'Start Round' to begin.");
 	}, []);
 
@@ -560,14 +563,19 @@ export function GuessifyGame() {
 
 				{/* Game Stats HUD */}
 				<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-					<div className="bg-gradient-to-r from-green-500/20 to-green-600/20 backdrop-blur-sm p-4 rounded-xl border border-green-500/30">
-						<div className="text-3xl font-bold text-green-400">{gameStats.currentScore}</div>
-						<div className="text-sm text-green-300">Current Score</div>
-					</div>
-					<div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 backdrop-blur-sm p-4 rounded-xl border border-blue-500/30">
-						<div className="text-3xl font-bold text-blue-400">{gameStats.currentStreak}</div>
-						<div className="text-sm text-blue-300">Current Streak</div>
-					</div>
+					{/* CRITICAL FIX: Only show current score/streak after game has started */}
+					{hasStartedGame && (
+						<>
+							<div className="bg-gradient-to-r from-green-500/20 to-green-600/20 backdrop-blur-sm p-4 rounded-xl border border-green-500/30">
+								<div className="text-3xl font-bold text-green-400">{gameStats.currentScore}</div>
+								<div className="text-sm text-green-300">Current Score</div>
+							</div>
+							<div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 backdrop-blur-sm p-4 rounded-xl border border-blue-500/30">
+								<div className="text-3xl font-bold text-blue-400">{gameStats.currentStreak}</div>
+								<div className="text-sm text-blue-300">Current Streak</div>
+							</div>
+						</>
+					)}
 					<div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 backdrop-blur-sm p-4 rounded-xl border border-purple-500/30">
 						<div className="text-2xl font-bold text-purple-400">{gameStats.highScore}</div>
 						<div className="text-sm text-purple-300">High Score</div>
@@ -605,12 +613,20 @@ export function GuessifyGame() {
 								{loading ? 'Loading...' : 'Start Round'}
 							</button>
 						) : (
-							<button 
-								className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
-								onClick={playCurrentLevel}
-							>
-								Play {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
-							</button>
+							<div className="space-y-4">
+								{/* CRITICAL FIX: Show level info above button */}
+								<div className="text-lg text-gray-300">
+									Level: <span className="text-white font-semibold">{getCurrentLevel()?.name}</span> 
+									({formatTime(getCurrentLevel()?.duration || 0)})
+								</div>
+								{/* CRITICAL FIX: Simplified button text */}
+								<button 
+									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
+									onClick={playCurrentLevel}
+								>
+									Play
+								</button>
+							</div>
 						)}
 						<div className="text-gray-400">
 							{!currentRound ? "Start a new round with a random song!" : "Ready to play!"}
@@ -761,7 +777,7 @@ export function GuessifyGame() {
 							)}
 							<button
 								onClick={startNewRound}
-								className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105"
+								className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105"
 							>
 								{endScreenData.wasCorrect ? "Next Round" : "Try Again"}
 							</button>
