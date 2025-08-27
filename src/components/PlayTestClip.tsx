@@ -18,6 +18,16 @@ export function PlayTestClip() {
 		void initPlayer();
 	}, [initPlayer, loadAll]);
 
+	// Monitor tracks changes
+	useEffect(() => {
+		console.log("PlayTestClip: tracks changed", { 
+			tracksLength: tracks.length, 
+			loading, 
+			error,
+			sampleTrack: tracks[0] 
+		});
+	}, [tracks, loading, error]);
+
 	const playClip = useCallback(async () => {
 		console.log("PlayTestClip: playClip called", { 
 			tracksLength: tracks.length, 
@@ -93,6 +103,7 @@ export function PlayTestClip() {
 			<div className="text-xs text-gray-500">
 				Debug: {tracks.length} tracks, SDK: {isSdkAvailable ? 'Yes' : 'No'}, Loading: {loading ? 'Yes' : 'No'}
 				{error && `, Error: ${error}`}
+				{tracks.length > 0 && `, First track: ${tracks[0]?.name}`}
 			</div>
 		</div>
 	);
