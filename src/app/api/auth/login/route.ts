@@ -18,8 +18,18 @@ export async function GET() {
 	const verifier = generateRandomString(64);
 	const challenge = await createCodeChallenge(verifier);
 
-	await setCookie("spotify_pkce_verifier", verifier, { maxAge: 600 });
-	await setCookie("spotify_auth_state", state, { maxAge: 600 });
+	await setCookie("spotify_pkce_verifier", verifier, { 
+		maxAge: 600,
+		path: "/",
+		sameSite: "lax",
+		secure: true
+	});
+	await setCookie("spotify_auth_state", state, { 
+		maxAge: 600,
+		path: "/",
+		sameSite: "lax",
+		secure: true
+	});
 
 	const params = new URLSearchParams({
 		response_type: "code",
