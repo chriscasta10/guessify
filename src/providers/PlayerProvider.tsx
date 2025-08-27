@@ -94,13 +94,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			
 			playerRef.current.addListener("ready", (data: unknown) => {
 				console.log("PlayerProvider: player ready event:", data);
-				// The device ID should be available in the ready event
-				if (playerRef.current?._options?.id) {
-					const newDeviceId = playerRef.current._options.id;
-					console.log("PlayerProvider: device ID captured:", newDeviceId);
+				// Extract device ID from the ready event data
+				const readyData = data as { device_id?: string };
+				if (readyData?.device_id) {
+					const newDeviceId = readyData.device_id;
+					console.log("PlayerProvider: device ID captured from ready event:", newDeviceId);
 					setDeviceId(newDeviceId);
 				} else {
-					console.log("PlayerProvider: device ID not found in ready event");
+					console.log("PlayerProvider: device ID not found in ready event data");
 				}
 			});
 			
