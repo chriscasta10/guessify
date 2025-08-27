@@ -3,13 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { usePlayer } from "@/providers/PlayerProvider";
 
-const LEVELS = [100, 500, 1000, 2000, 4000, 8000];
+// More human-friendly timer levels: 1s, 2s, 4s, 8s, 16s, 32s
+const LEVELS = [1000, 2000, 4000, 8000, 16000, 32000];
 
 export function PlayTestClip() {
 	const { initPlayer, connect, play, pause, seek, isSdkAvailable } = usePlayer();
 	const { tracks, loadAll, loading, error } = useLikedTracks(20);
 	const [levelIndex, setLevelIndex] = useState(0);
 	const [debugInfo, setDebugInfo] = useState<string>("");
+	const [isPlaying, setIsPlaying] = useState(false);
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 
 	useEffect(() => {
@@ -50,15 +52,23 @@ export function PlayTestClip() {
 		const randomStart = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (levelMs + 3000))));
 
 		setDebugInfo(`Playing ${track.name} by ${track.artist} at ${randomStart}ms for ${levelMs}ms`);
+		setIsPlaying(true);
 
 		try {
 			if (isSdkAvailable) {
 				console.log("Using Spotify SDK");
-				await connect();
+				const connected = await connect();
+				if (!connected) {
+					setDebugInfo("Failed to connect to Spotify SDK");
+					setIsPlaying(false);
+					return;
+				}
+				
 				await seek(randomStart);
 				await play(track.uri, randomStart);
 				setTimeout(() => {
 					void pause();
+					setIsPlaying(false);
 				}, levelMs);
 				return;
 			}
@@ -68,29 +78,59 @@ export function PlayTestClip() {
 				if (!audioRef.current) {
 					audioRef.current = new Audio(track.previewUrl);
 				}
+				
+				// Reset audio and set position
 				audioRef.current.currentTime = randomStart / 1000;
-				await audioRef.current.play();
-				setTimeout(() => {
-					audioRef.current?.pause();
-				}, levelMs);
+				audioRef.current.volume = 0.8;
+				
+				// Play the audio
+				try {
+					await audioRef.current.play();
+					console.log("Audio started playing");
+					
+					// Stop after the specified duration
+					setTimeout(() => {
+						if (audioRef.current) {
+							audioRef.current.pause();
+							console.log("Audio stopped");
+						}
+						setIsPlaying(false);
+					}, levelMs);
+				} catch (playError) {
+					console.error("Error playing audio:", playError);
+					setDebugInfo(`Audio playback error: ${playError instanceof Error ? playError.message : 'Unknown error'}`);
+					setIsPlaying(false);
+				}
 			} else {
 				setDebugInfo("No preview URL available for this track");
+				setIsPlaying(false);
 			}
 		} catch (err) {
 			console.error("Error playing clip:", err);
 			setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+			setIsPlaying(false);
 		}
 	}, [connect, isSdkAvailable, levelIndex, pause, play, seek, tracks, loading, error]);
+
+	const formatTime = (ms: number) => {
+		if (ms < 1000) return `${ms}ms`;
+		return `${ms / 1000}s`;
+	};
 
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex items-center gap-3">
-				<button className="rounded bg-emerald-600 text-white px-3 py-2" onClick={playClip}>
-					Play Test Clip ({LEVELS[levelIndex]}ms)
+				<button 
+					className={`rounded px-3 py-2 ${isPlaying ? 'bg-red-600' : 'bg-emerald-600'} text-white`}
+					onClick={playClip}
+					disabled={isPlaying}
+				>
+					{isPlaying ? 'Playing...' : `Play Test Clip (${formatTime(LEVELS[levelIndex])})`}
 				</button>
 				<button
 					className="rounded border px-3 py-2"
 					onClick={() => setLevelIndex((i) => Math.min(i + 1, LEVELS.length - 1))}
+					disabled={isPlaying}
 				>
 					I don't know →
 				</button>
