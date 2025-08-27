@@ -192,6 +192,22 @@ export function GuessifyGame() {
 		};
 	}, [clearPlaybackTimeout]);
 
+	const startNewGame = useCallback(() => {
+		// Reset for new game - CRITICAL FIX: Reset current score and streak
+		setGameStats(prev => ({
+			...prev,
+			currentScore: 0,
+			currentStreak: 0,
+		}));
+		setCurrentRound(null);
+		setSelectedSearchResult(null);
+		setEndScreenData(null);
+		setGameState("waiting");
+		setButtonAnimation("");
+		setHasStartedGame(false); // Reset game start state
+		setDebugInfo("New game started! Click 'Start Round' to begin.");
+	}, []);
+
 	const startNewRound = useCallback(async () => {
 		console.log("PlayTestClip: startNewRound called", { 
 			tracksLength: tracks.length, 
@@ -205,6 +221,13 @@ export function GuessifyGame() {
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
 		currentSnippetPositionRef.current = 0; // Reset snippet position
+
+		// CRITICAL FIX: Reset current score and streak to 0 when starting new round
+		setGameStats(prev => ({
+			...prev,
+			currentScore: 0,
+			currentStreak: 0,
+		}));
 
 		// Load tracks on-demand if we don't have any
 		if (tracks.length === 0) {
@@ -504,22 +527,6 @@ export function GuessifyGame() {
 		setSelectedSearchResult(result);
 	}, []);
 
-	const startNewGame = useCallback(() => {
-		// Reset for new game - CRITICAL FIX: Reset current score and streak
-		setGameStats(prev => ({
-			...prev,
-			currentScore: 0,
-			currentStreak: 0,
-		}));
-		setCurrentRound(null);
-		setSelectedSearchResult(null);
-		setEndScreenData(null);
-		setGameState("waiting");
-		setButtonAnimation("");
-		setHasStartedGame(false); // Reset game start state
-		setDebugInfo("New game started! Click 'Start Round' to begin.");
-	}, []);
-
 	const formatTime = (ms: number) => {
 		if (ms < 1000) return `${ms}ms`;
 		return `${(ms / 1000).toFixed(1)}s`;
@@ -562,29 +569,42 @@ export function GuessifyGame() {
 				</div>
 
 				{/* Game Stats HUD */}
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-					{/* CRITICAL FIX: Only show current score/streak after game has started */}
-					{hasStartedGame && (
-						<>
-							<div className="bg-gradient-to-r from-green-500/20 to-green-600/20 backdrop-blur-sm p-4 rounded-xl border border-green-500/30">
-								<div className="text-3xl font-bold text-green-400">{gameStats.currentScore}</div>
-								<div className="text-sm text-green-300">Current Score</div>
+				{/* CRITICAL FIX: Dynamic layout based on game state */}
+				{!hasStartedGame ? (
+					/* When game hasn't started: center the 2 achievement stats */
+					<div className="flex justify-center mb-8">
+						<div className="grid grid-cols-2 gap-4">
+							<div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 backdrop-blur-sm p-4 rounded-xl border border-purple-500/30">
+								<div className="text-2xl font-bold text-purple-400">{gameStats.highScore}</div>
+								<div className="text-sm text-purple-300">High Score</div>
 							</div>
-							<div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 backdrop-blur-sm p-4 rounded-xl border border-blue-500/30">
-								<div className="text-3xl font-bold text-blue-400">{gameStats.currentStreak}</div>
-								<div className="text-sm text-blue-300">Current Streak</div>
+							<div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 backdrop-blur-sm p-4 rounded-xl border border-yellow-500/30">
+								<div className="text-2xl font-bold text-yellow-400">{gameStats.bestStreak}</div>
+								<div className="text-sm text-yellow-300">Best Streak</div>
 							</div>
-						</>
-					)}
-					<div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 backdrop-blur-sm p-4 rounded-xl border border-purple-500/30">
-						<div className="text-2xl font-bold text-purple-400">{gameStats.highScore}</div>
-						<div className="text-sm text-purple-300">High Score</div>
+						</div>
 					</div>
-					<div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 backdrop-blur-sm p-4 rounded-xl border border-yellow-500/30">
-						<div className="text-2xl font-bold text-yellow-400">{gameStats.bestStreak}</div>
-						<div className="text-sm text-yellow-300">Best Streak</div>
+				) : (
+					/* When game has started: show all 4 stats in grid */
+					<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+						<div className="bg-gradient-to-r from-green-500/20 to-green-600/20 backdrop-blur-sm p-4 rounded-xl border border-green-500/30">
+							<div className="text-3xl font-bold text-green-400">{gameStats.currentScore}</div>
+							<div className="text-sm text-green-300">Current Score</div>
+						</div>
+						<div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 backdrop-blur-sm p-4 rounded-xl border border-blue-500/30">
+							<div className="text-3xl font-bold text-blue-400">{gameStats.currentStreak}</div>
+							<div className="text-sm text-blue-300">Current Streak</div>
+						</div>
+						<div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 backdrop-blur-sm p-4 rounded-xl border border-purple-500/30">
+							<div className="text-2xl font-bold text-purple-400">{gameStats.highScore}</div>
+							<div className="text-sm text-purple-300">High Score</div>
+						</div>
+						<div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 backdrop-blur-sm p-4 rounded-xl border border-yellow-500/30">
+							<div className="text-2xl font-bold text-yellow-400">{gameStats.bestStreak}</div>
+							<div className="text-sm text-yellow-300">Best Streak</div>
+						</div>
 					</div>
-				</div>
+				)}
 
 				{/* Loading Progress */}
 				{loading && (
@@ -767,20 +787,21 @@ export function GuessifyGame() {
 						
 						<div className="flex gap-4 justify-center">
 							{/* CRITICAL FIX: Only show New Game for incorrect guesses, Next Round for correct */}
-							{!endScreenData.wasCorrect && (
+							{!endScreenData.wasCorrect ? (
 								<button
 									onClick={startNewGame}
 									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
 								>
 									New Game
 								</button>
+							) : (
+								<button
+									onClick={startNewRound}
+									className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105"
+								>
+									Next Round
+								</button>
 							)}
-							<button
-								onClick={startNewRound}
-								className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105"
-							>
-								{endScreenData.wasCorrect ? "Next Round" : "Try Again"}
-							</button>
 						</div>
 					</div>
 				)}
