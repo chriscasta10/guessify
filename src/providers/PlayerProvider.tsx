@@ -34,6 +34,7 @@ declare global {
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	const playerRef = useRef<any>(null);
 	const [ready, setReady] = useState(false);
+	const [deviceId, setDeviceId] = useState<string>("");
 	const [listeners, setListeners] = useState<Array<(s: unknown) => void>>([]);
 
 	const initPlayer = useCallback(async () => {
@@ -51,8 +52,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
 	const connect = useCallback(async () => {
 		console.log("PlayerProvider: connect() called");
-		if (playerRef.current) {
-			console.log("PlayerProvider: player already exists, returning true");
+		if (playerRef.current && deviceId) {
+			console.log("PlayerProvider: player already exists with device ID, returning true");
 			return true;
 		}
 		
@@ -95,7 +96,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				console.log("PlayerProvider: player ready event:", data);
 				// The device ID should be available in the ready event
 				if (playerRef.current?._options?.id) {
-					console.log("PlayerProvider: device ID captured:", playerRef.current._options.id);
+					const newDeviceId = playerRef.current._options.id;
+					console.log("PlayerProvider: device ID captured:", newDeviceId);
+					setDeviceId(newDeviceId);
 				} else {
 					console.log("PlayerProvider: device ID not found in ready event");
 				}
@@ -128,6 +131,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			if (connected) {
 				console.log("PlayerProvider: successfully connected!");
 				console.log("PlayerProvider: player options:", playerRef.current._options);
+				
+				// Wait for the device ID to be available
+				if (!deviceId) {
+					console.log("PlayerProvider: waiting for device ID...");
+					await new Promise<void>((resolve) => {
+						const checkDeviceId = () => {
+							if (deviceId || (playerRef.current?._options?.id)) {
+								resolve();
+							} else {
+								setTimeout(checkDeviceId, 100);
+							}
+						};
+						checkDeviceId();
+					});
+				}
 			}
 			
 			return connected;
@@ -135,18 +153,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			console.error("PlayerProvider: error during connection:", error);
 			return false;
 		}
-	}, [listeners]);
+	}, [listeners, deviceId]);
 
 	const play = useCallback(async (uri: string, positionMs = 0) => {
 		console.log("PlayerProvider: play() called", { uri, positionMs });
-		const deviceId = (playerRef.current && playerRef.current._options?.id) || "";
-		console.log("PlayerProvider: device ID for play:", deviceId);
+		const currentDeviceId = deviceId || (playerRef.current?._options?.id);
+		console.log("PlayerProvider: device ID for play:", currentDeviceId);
+		
+		if (!currentDeviceId) {
+			throw new Error("No device ID available - player not ready");
+		}
 		
 		try {
 			const response = await fetch("/api/player/play", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ deviceId, uri, positionMs }),
+				body: JSON.stringify({ deviceId: currentDeviceId, uri, positionMs }),
 			});
 			
 			console.log("PlayerProvider: play API response status:", response.status);
@@ -162,7 +184,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			console.error("PlayerProvider: play() error:", error);
 			throw error;
 		}
-	}, []);
+	}, [deviceId]);
 
 	const pause = useCallback(async () => {
 		console.log("PlayerProvider: pause() called");
@@ -180,14 +202,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
 	const seek = useCallback(async (ms: number) => {
 		console.log("PlayerProvider: seek() called", { ms });
-		const deviceId = (playerRef.current && playerRef.current._options?.id) || "";
-		console.log("PlayerProvider: device ID for seek:", deviceId);
+		const currentDeviceId = deviceId || (playerRef.current?._options?.id);
+		console.log("PlayerProvider: device ID for seek:", currentDeviceId);
+		
+		if (!currentDeviceId) {
+			throw new Error("No device ID available - player not ready");
+		}
 		
 		try {
 			const response = await fetch("/api/player/seek", {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ deviceId, positionMs: ms }),
+				body: JSON.stringify({ deviceId: currentDeviceId, positionMs: ms }),
 			});
 			
 			console.log("PlayerProvider: seek API response status:", response.status);
@@ -203,7 +229,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			console.error("PlayerProvider: seek() error:", error);
 			throw error;
 		}
-	}, []);
+	}, [deviceId]);
 
 	const onStateChange = useCallback((cb: (s: unknown) => void) => {
 		setListeners((prev) => prev.concat(cb));
