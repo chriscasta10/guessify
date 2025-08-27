@@ -12,10 +12,10 @@ interface GameLevel {
 }
 
 const GAME_LEVELS: GameLevel[] = [
-	{ name: "Extreme", duration: 300, points: 1000 },   // 0.3s
-	{ name: "Hard", duration: 1000, points: 500 },      // 1.0s
-	{ name: "Medium", duration: 2000, points: 250 },    // 2.0s
-	{ name: "Easy", duration: 4000, points: 125 },      // 4.0s
+	{ name: "Extreme", duration: 800, points: 1000 },   // 0.8s - more reasonable
+	{ name: "Hard", duration: 1500, points: 500 },      // 1.5s
+	{ name: "Medium", duration: 3000, points: 250 },    // 3.0s
+	{ name: "Easy", duration: 5000, points: 125 },      // 5.0s
 	{ name: "Chill", duration: 8000, points: 60 },      // 8.0s
 ];
 
@@ -186,7 +186,7 @@ export function GuessifyGame() {
 		isPlayingRef.current = true;
 		hasPlayedRef.current = true;
 
-		// Set a guaranteed timeout to stop playback
+		// Set a guaranteed timeout to stop playback - this is the key fix!
 		playbackTimeoutRef.current = setTimeout(() => {
 			console.log("Playback timeout triggered - stopping audio");
 			isPlayingRef.current = false;
@@ -198,7 +198,14 @@ export function GuessifyGame() {
 				audioRef.current.pause();
 				audioRef.current.currentTime = 0;
 			}
-		}, currentLevel.duration + 100); // Add small buffer
+			
+			// Also try to pause via SDK if available
+			try {
+				pause();
+			} catch (e) {
+				console.log("SDK pause failed during timeout, but that's okay");
+			}
+		}, currentLevel.duration + 50); // Reduced buffer for more precise timing
 
 		try {
 			// Always try Spotify SDK first (works for all tracks)
@@ -227,6 +234,7 @@ export function GuessifyGame() {
 						await play(track.uri, randomStart);
 						
 						setAudioDebug(`Playing via SDK, will stop in ${formatTime(currentLevel.duration)}`);
+						console.log(`SDK playback started, timeout set for ${currentLevel.duration}ms`);
 						return; // Success - timeout will handle stopping
 					} catch (playError) {
 						console.error("Error during SDK playback:", playError);
@@ -263,6 +271,7 @@ export function GuessifyGame() {
 					await audioRef.current.play();
 					console.log("Audio started playing");
 					setAudioDebug(`Audio play() succeeded, will stop in ${formatTime(currentLevel.duration)}`);
+					console.log(`Preview playback started, timeout set for ${currentLevel.duration}ms`);
 					return; // Success - timeout will handle stopping
 				} catch (playError) {
 					console.error("Error playing audio:", playError);
