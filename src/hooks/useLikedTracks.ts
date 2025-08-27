@@ -79,10 +79,11 @@ export function useLikedTracks(limit = 50) {
 		}
 	}, [fetchPage, limit, normalize]);
 
-	useEffect(() => {
-		console.log("useLikedTracks: useEffect triggered, calling loadAll");
-		loadAll();
-	}, [loadAll]);
+	// Remove the useEffect that was causing infinite API calls
+	// useEffect(() => {
+	// 	console.log("useLikedTracks: useEffect triggered, calling loadAll");
+	// 	loadAll();
+	// }, [loadAll]);
 
 	return useMemo(
 		() => ({ tracks, loading, error, loadAll }),
