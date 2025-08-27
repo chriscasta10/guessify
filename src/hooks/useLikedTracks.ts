@@ -17,10 +17,30 @@ type SpotifySavedTracksResponse = {
 };
 
 export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
-	const [tracks, setTracks] = useState<LikedTrack[]>([]);
+	const [tracks, setTracks] = useState<LikedTrack[]>(() => {
+		// Load from localStorage on init if available
+		if (typeof window !== 'undefined') {
+			const saved = localStorage.getItem('guessify-tracks');
+			if (saved) {
+				try {
+					return JSON.parse(saved);
+				} catch (e) {
+					console.error('Failed to parse saved tracks:', e);
+				}
+			}
+		}
+		return [];
+	});
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [loadingProgress, setLoadingProgress] = useState<{ loaded: number; total: number | null }>({ loaded: 0, total: null });
+
+	// Save tracks to localStorage whenever they change
+	useEffect(() => {
+		if (typeof window !== 'undefined' && tracks.length > 0) {
+			localStorage.setItem('guessify-tracks', JSON.stringify(tracks));
+		}
+	}, [tracks]);
 
 	const normalize = useCallback((resp: SpotifySavedTracksResponse): LikedTrack[] => {
 		return resp.items.map(({ track }) => ({
@@ -67,6 +87,12 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	}, [limit]);
 
 	const loadAll = useCallback(async () => {
+		// If we already have tracks loaded, don't reload
+		if (tracks.length > 0) {
+			console.log("useLikedTracks: tracks already loaded, skipping reload");
+			return;
+		}
+
 		console.log("useLikedTracks: loadAll called");
 		setLoading(true);
 		setError(null);
@@ -104,7 +130,7 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 		} finally {
 			setLoading(false);
 		}
-	}, [fetchPage, limit, normalize]);
+	}, [fetchPage, limit, normalize, tracks.length]);
 
 	// Remove the useEffect that was causing infinite API calls
 	// useEffect(() => {

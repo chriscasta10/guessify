@@ -77,6 +77,7 @@ export function GuessifyGame() {
 	} | null>(null);
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const playbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const isPlayingRef = useRef(false);
 
 	useEffect(() => {
 		console.log("PlayTestClip: useEffect triggered");
@@ -155,7 +156,7 @@ export function GuessifyGame() {
 		setCurrentRound(newRound);
 		setSelectedSearchResult(null);
 		setGameState("waiting");
-		setDebugInfo(`New round started! ${track.name} by ${track.artist}`);
+		setDebugInfo("New round started! Click 'Play' to begin.");
 	}, [tracks, loading, error, loadAll]);
 
 	const playCurrentLevel = useCallback(async () => {
@@ -170,9 +171,10 @@ export function GuessifyGame() {
 		const track = currentRound.track;
 		const randomStart = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
 
-		setDebugInfo(`Playing ${track.name} by ${track.artist} at ${randomStart}ms for ${currentLevel.duration}ms (${currentLevel.name} level)`);
+		setDebugInfo(`Playing ${currentLevel.name} level clip...`);
 		setGameState("playing");
 		setAudioDebug(`Playing ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
+		isPlayingRef.current = true;
 
 		try {
 			// Always try Spotify SDK first (works for all tracks)
@@ -204,15 +206,19 @@ export function GuessifyGame() {
 						
 						// Set timeout to stop playback
 						playbackTimeoutRef.current = setTimeout(async () => {
-							await pause();
-							setGameState("guessing");
-							setAudioDebug("SDK playback stopped - time to guess!");
+							if (isPlayingRef.current) {
+								await pause();
+								isPlayingRef.current = false;
+								setGameState("guessing");
+								setAudioDebug("SDK playback stopped - time to guess!");
+							}
 						}, currentLevel.duration);
 						
 						return;
 					} catch (playError) {
 						console.error("Error during SDK playback:", playError);
 						setAudioDebug("SDK playback error: " + (playError instanceof Error ? playError.message : 'Unknown'));
+						isPlayingRef.current = false;
 						// Fall through to preview URL
 					}
 				}
@@ -248,10 +254,11 @@ export function GuessifyGame() {
 					
 					// Set timeout to stop after the specified duration
 					playbackTimeoutRef.current = setTimeout(() => {
-						if (audioRef.current) {
+						if (audioRef.current && isPlayingRef.current) {
 							audioRef.current.pause();
 							console.log("Audio stopped");
 							setAudioDebug("Preview playback stopped - time to guess!");
+							isPlayingRef.current = false;
 						}
 						setGameState("guessing");
 					}, currentLevel.duration);
@@ -260,17 +267,20 @@ export function GuessifyGame() {
 					setDebugInfo(`Audio playback error: ${playError instanceof Error ? playError.message : 'Unknown error'}`);
 					setAudioDebug("Play error: " + (playError instanceof Error ? playError.message : 'Unknown'));
 					setGameState("waiting");
+					isPlayingRef.current = false;
 				}
 			} else {
 				setDebugInfo("No preview URL available for this track");
 				setAudioDebug("No preview URL - can't play this track");
 				setGameState("waiting");
+				isPlayingRef.current = false;
 			}
 		} catch (err) {
 			console.error("Error playing clip:", err);
 			setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
 			setAudioDebug("General error: " + (err instanceof Error ? err.message : 'Unknown'));
 			setGameState("waiting");
+			isPlayingRef.current = false;
 		}
 	}, [currentRound, connect, isSdkAvailable, pause, play, seek]);
 
@@ -319,7 +329,7 @@ export function GuessifyGame() {
 				};
 			});
 			
-			setDebugInfo(`Correct! +${pointsEarned} points for ${currentLevel.name} level. It was "${currentRound.track.name}" by ${currentRound.track.artist}`);
+			setDebugInfo(`Correct! +${pointsEarned} points for ${currentLevel.name} level.`);
 			
 			// End round and show end screen
 			setEndScreenData({
@@ -462,7 +472,7 @@ export function GuessifyGame() {
 						</button>
 					)}
 					<div className="text-sm text-gray-600">
-						{!currentRound ? "Start a new round with a random song!" : "Current song: " + currentRound.track.name}
+						{!currentRound ? "Start a new round with a random song!" : "Ready to play!"}
 					</div>
 				</div>
 			)}
@@ -472,7 +482,7 @@ export function GuessifyGame() {
 				<div className="text-center">
 					<div className="text-lg font-semibold text-gray-800 mb-2">🎵 Playing...</div>
 					<div className="text-sm text-gray-600">
-						{currentRound.track.name} - {getCurrentLevel()?.name} Level ({formatTime(getCurrentLevel()?.duration || 0)})
+						{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
 					</div>
 				</div>
 			)}
@@ -572,7 +582,7 @@ export function GuessifyGame() {
 				</div>
 			)}
 
-			{/* Debug Info */}
+			{/* Debug Info - Only show non-spoiler info */}
 			{debugInfo && (
 				<div className="text-sm text-gray-600 bg-gray-100 p-3 rounded-lg">
 					{debugInfo}
@@ -588,8 +598,6 @@ export function GuessifyGame() {
 			<div className="text-xs text-gray-500 text-center">
 				Debug: {tracks.length} tracks, SDK: {isSdkAvailable ? 'Yes' : 'No'}, Loading: {loading ? 'Yes' : 'No'}
 				{error && `, Error: ${error}`}
-				{tracks.length > 0 && `, First track: ${tracks[0]?.name}`}
-				{tracks.length > 0 && `, Tracks with preview: ${tracks.filter(t => t.hasPreview).length}`}
 			</div>
 		</div>
 	);
