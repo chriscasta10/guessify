@@ -186,26 +186,35 @@ export function GuessifyGame() {
 		isPlayingRef.current = true;
 		hasPlayedRef.current = true;
 
-		// Set a guaranteed timeout to stop playback - this is the key fix!
-		playbackTimeoutRef.current = setTimeout(() => {
-			console.log("Playback timeout triggered - stopping audio");
+		// CRITICAL FIX: Set a guaranteed timeout to stop playback
+		console.log(`Setting timeout for ${currentLevel.duration}ms`);
+		playbackTimeoutRef.current = setTimeout(async () => {
+			console.log("🚨 TIMEOUT TRIGGERED - FORCING AUDIO STOP");
 			isPlayingRef.current = false;
 			setGameState("guessing");
-			setAudioDebug("Time's up - time to guess!");
+			setAudioDebug("🚨 TIMEOUT: Time's up - time to guess!");
 			
-			// Force stop any playing audio
-			if (audioRef.current) {
-				audioRef.current.pause();
-				audioRef.current.currentTime = 0;
-			}
-			
-			// Also try to pause via SDK if available
+			// Force stop any playing audio - MULTIPLE METHODS
 			try {
-				pause();
+				// Method 1: Stop preview audio if playing
+				if (audioRef.current) {
+					console.log("Stopping preview audio");
+					audioRef.current.pause();
+					audioRef.current.currentTime = 0;
+				}
+				
+				// Method 2: Try to pause via SDK
+				console.log("Attempting SDK pause");
+				await pause();
+				console.log("SDK pause successful");
 			} catch (e) {
-				console.log("SDK pause failed during timeout, but that's okay");
+				console.log("SDK pause failed during timeout, but that's okay:", e);
 			}
-		}, currentLevel.duration + 50); // Reduced buffer for more precise timing
+			
+			// Method 3: Force state change regardless
+			console.log("Forcing game state to guessing");
+			setGameState("guessing");
+		}, currentLevel.duration);
 
 		try {
 			// Always try Spotify SDK first (works for all tracks)
@@ -235,6 +244,7 @@ export function GuessifyGame() {
 						
 						setAudioDebug(`Playing via SDK, will stop in ${formatTime(currentLevel.duration)}`);
 						console.log(`SDK playback started, timeout set for ${currentLevel.duration}ms`);
+						console.log("⏰ TIMEOUT ACTIVE - Audio should stop automatically");
 						return; // Success - timeout will handle stopping
 					} catch (playError) {
 						console.error("Error during SDK playback:", playError);
@@ -272,6 +282,7 @@ export function GuessifyGame() {
 					console.log("Audio started playing");
 					setAudioDebug(`Audio play() succeeded, will stop in ${formatTime(currentLevel.duration)}`);
 					console.log(`Preview playback started, timeout set for ${currentLevel.duration}ms`);
+					console.log("⏰ TIMEOUT ACTIVE - Audio should stop automatically");
 					return; // Success - timeout will handle stopping
 				} catch (playError) {
 					console.error("Error playing audio:", playError);
@@ -508,11 +519,37 @@ export function GuessifyGame() {
 
 			{/* Game State Display */}
 			{gameState === "playing" && currentRound && (
-				<div className="text-center">
+				<div className="text-center space-y-3">
 					<div className="text-lg font-semibold text-gray-800 mb-2">🎵 Playing...</div>
 					<div className="text-sm text-gray-600">
 						{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
 					</div>
+					<button
+						onClick={() => {
+							console.log("Manual stop button clicked");
+							if (playbackTimeoutRef.current) {
+								clearTimeout(playbackTimeoutRef.current);
+								playbackTimeoutRef.current = null;
+							}
+							isPlayingRef.current = false;
+							setGameState("guessing");
+							setAudioDebug("Manual stop - time to guess!");
+							
+							// Force stop audio
+							if (audioRef.current) {
+								audioRef.current.pause();
+								audioRef.current.currentTime = 0;
+							}
+							try {
+								pause();
+							} catch (e) {
+								console.log("Manual SDK pause failed:", e);
+							}
+						}}
+						className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold"
+					>
+						🛑 Force Stop (Debug)
+					</button>
 				</div>
 			)}
 
