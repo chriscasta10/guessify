@@ -93,6 +93,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			
 			playerRef.current.addListener("ready", (data: unknown) => {
 				console.log("PlayerProvider: player ready event:", data);
+				// The device ID should be available in the ready event
+				if (playerRef.current?._options?.id) {
+					console.log("PlayerProvider: device ID captured:", playerRef.current._options.id);
+				} else {
+					console.log("PlayerProvider: device ID not found in ready event");
+				}
 			});
 			
 			playerRef.current.addListener("not_ready", (data: unknown) => {
@@ -132,25 +138,71 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	}, [listeners]);
 
 	const play = useCallback(async (uri: string, positionMs = 0) => {
+		console.log("PlayerProvider: play() called", { uri, positionMs });
 		const deviceId = (playerRef.current && playerRef.current._options?.id) || "";
-		await fetch("/api/player/play", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ deviceId, uri, positionMs }),
-		});
+		console.log("PlayerProvider: device ID for play:", deviceId);
+		
+		try {
+			const response = await fetch("/api/player/play", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ deviceId, uri, positionMs }),
+			});
+			
+			console.log("PlayerProvider: play API response status:", response.status);
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error("PlayerProvider: play API error:", { status: response.status, error: errorText });
+				throw new Error(`Play API failed: ${response.status} - ${errorText}`);
+			}
+			
+			const result = await response.json();
+			console.log("PlayerProvider: play API success:", result);
+		} catch (error) {
+			console.error("PlayerProvider: play() error:", error);
+			throw error;
+		}
 	}, []);
 
 	const pause = useCallback(async () => {
-		await fetch("/api/player/pause", { method: "PUT" });
+		console.log("PlayerProvider: pause() called");
+		try {
+			const response = await fetch("/api/player/pause", { method: "PUT" });
+			console.log("PlayerProvider: pause API response status:", response.status);
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error("PlayerProvider: pause API error:", { status: response.status, error: errorText });
+			}
+		} catch (error) {
+			console.error("PlayerProvider: pause() error:", error);
+		}
 	}, []);
 
 	const seek = useCallback(async (ms: number) => {
+		console.log("PlayerProvider: seek() called", { ms });
 		const deviceId = (playerRef.current && playerRef.current._options?.id) || "";
-		await fetch("/api/player/seek", {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ deviceId, positionMs: ms }),
-		});
+		console.log("PlayerProvider: device ID for seek:", deviceId);
+		
+		try {
+			const response = await fetch("/api/player/seek", {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ deviceId, positionMs: ms }),
+			});
+			
+			console.log("PlayerProvider: seek API response status:", response.status);
+			if (!response.ok) {
+				const errorText = await response.text();
+				console.error("PlayerProvider: seek API error:", { status: response.status, error: errorText });
+				throw new Error(`Seek API failed: ${response.status} - ${errorText}`);
+			}
+			
+			const result = await response.json();
+			console.log("PlayerProvider: seek API success:", result);
+		} catch (error) {
+			console.error("PlayerProvider: seek() error:", error);
+			throw error;
+		}
 	}, []);
 
 	const onStateChange = useCallback((cb: (s: unknown) => void) => {
