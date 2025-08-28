@@ -366,7 +366,7 @@ export function GuessifyGame() {
 		return () => {
 			console.log("GuessifyGame: Cleaning up player state change listener");
 		};
-	}, [onStateChange, startPlaybackTimeout, pause, clearHardCapTimeout, stopProgress, startProgress]);
+	}, [onStateChange, startPlaybackTimeout, pause, clearHardCapTimeout]);
 
 	useEffect(() => {
 		console.log("PlayTestClip: tracks changed", { 
