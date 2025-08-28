@@ -12,6 +12,12 @@ interface PlayRequest {
 	createdAt: number;
 }
 
+interface PlaySnippetParams {
+	uri: string;
+	startMs: number;
+	durationMs: number;
+}
+
 // State model for clean status tracking
 interface PlayerState {
 	status: 'idle' | 'requesting' | 'seeking' | 'playing' | 'paused' | 'ended' | 'error';
@@ -73,8 +79,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	
 	// Request serialization
 	const playRequestIdRef = useRef(0);
-	const currentRequestRef = useRef<PlayRequest | null>(null);
+	// Current request tracking
+	const currentRequestRef = useRef<number | null>(null);
 	const playRequestsRef = useRef<Map<number, AbortController>>(new Map());
+	const replayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	
 	// Timing and progress
 	const rafRef = useRef<number | null>(null);
@@ -302,6 +310,85 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		poll();
 	}, [cleanupRequest, updatePlayerState]);
 
+	// Wait for track to be loaded (as recommended by ChatGPT 5)
+	const waitForTrackLoaded = useCallback(async (requestId: number, signal: AbortSignal): Promise<any> => {
+		return new Promise((resolve, reject) => {
+			let retries = 0;
+			const maxRetries = 20; // 2 seconds max
+			
+			const listener = (state: any) => {
+				if (signal.aborted) {
+					playerRef.current?.removeListener('player_state_changed', listener);
+					reject(new Error('Aborted'));
+					return;
+				}
+				
+				if (state?.track_window?.current_track) {
+					playerRef.current?.removeListener('player_state_changed', listener);
+					resolve(state);
+				} else if (retries++ > maxRetries) {
+					playerRef.current?.removeListener('player_state_changed', listener);
+					reject(new Error('Timeout waiting for track load'));
+				}
+			};
+			
+			playerRef.current?.addListener('player_state_changed', listener);
+			
+			// Also check current state immediately
+			playerRef.current?.getCurrentState().then((state: any) => {
+				if (state?.track_window?.current_track) {
+					playerRef.current?.removeListener('player_state_changed', listener);
+					resolve(state);
+				}
+			});
+		});
+	}, []);
+	
+	// Safe seek with retry (as recommended by ChatGPT 5)
+	const safeSeek = useCallback(async (ms: number, requestId: number, signal: AbortSignal, retries = 2): Promise<void> => {
+		try {
+			await playerRef.current?.seek(ms);
+			console.log("🎯 Seek success:", ms);
+		} catch (err) {
+			if (retries > 0 && !signal.aborted) {
+				console.warn("⚠️ Seek failed, retrying...", err);
+				await new Promise(r => setTimeout(r, 300));
+				return safeSeek(ms, requestId, signal, retries - 1);
+			} else {
+				console.error("❌ Seek failed after retries:", err);
+				throw err;
+			}
+		}
+	}, []);
+	
+	// Wait for snippet to end (as recommended by ChatGPT 5)
+	const waitForSnippetEnd = useCallback(async (requestId: number, durationMs: number, signal: AbortSignal): Promise<void> => {
+		return new Promise((resolve, reject) => {
+			if (signal.aborted) {
+				reject(new Error('Aborted'));
+				return;
+			}
+			
+			// Set a timeout for the exact duration
+			const timeoutId = setTimeout(async () => {
+				try {
+					await playerRef.current?.pause();
+					console.log("⏹️ Snippet stopped after", durationMs, "ms");
+					resolve();
+				} catch (err) {
+					console.error("❌ Error stopping snippet:", err);
+					resolve(); // Resolve anyway to not block
+				}
+			}, durationMs);
+			
+			// Clean up timeout if aborted
+			signal.addEventListener('abort', () => {
+				clearTimeout(timeoutId);
+				reject(new Error('Aborted'));
+			});
+		});
+	}, []);
+
 	// Initialize Spotify SDK
 	const initPlayer = useCallback(async () => {
 		if (ready) return;
@@ -443,71 +530,55 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	// Main playSnippet function (as recommended by ChatGPT 5)
-	const playSnippet = useCallback(async ({ uri, startMs, durationMs }: { uri: string; startMs: number; durationMs: number }) => {
-		console.log("🎵 playSnippet called:", { uri, startMs, durationMs });
+	const playSnippet = useCallback(async ({ uri, startMs, durationMs }: PlaySnippetParams): Promise<void> => {
+		const requestId = ++playRequestIdRef.current;
+		console.log("🎵 playSnippet requested:", { uri, startMs, durationMs, requestId });
 		
-		// Cancel previous request
+		// Cancel any previous request
 		if (currentRequestRef.current) {
-			console.log("🎵 Cancelling previous request:", currentRequestRef.current.requestId);
-			currentRequestRef.current.abortController.abort();
-			cleanupRequest(currentRequestRef.current.requestId);
+			await cancelAllRequests();
 		}
 		
-		// Create new request
-		const requestId = ++playRequestIdRef.current;
+		// Create new abort controller for this request
 		const abortController = new AbortController();
-		const request: PlayRequest = {
-			requestId,
-			uri,
-			startMs,
-			durationMs,
-			abortController,
-			createdAt: performance.now()
-		};
-		
-		currentRequestRef.current = request;
 		playRequestsRef.current.set(requestId, abortController);
-		
-		console.log("🎵 Starting new request:", requestId);
-		updatePlayerState({ status: 'requesting', currentRequestId: requestId });
+		currentRequestRef.current = requestId;
 		
 		try {
 			// Ensure device is connected
 			await connect();
 			
-			// Wait for player to be ready and have a track loaded
-			console.log("🎵 Waiting for player to be ready...");
-			let attempts = 0;
-			while (attempts < 20) { // Wait up to 1 second
-				const state = await playerRef.current.getCurrentState();
-				if (state && state.track && typeof state.position === 'number') {
-					console.log("🎵 Player ready with track:", { 
-						trackName: state.track.name,
-						position: state.position,
-						duration: state.duration
-					});
-					break;
-				}
-				await new Promise(resolve => setTimeout(resolve, 50));
-				attempts++;
+			// Clamp start time if too close to end (safety check)
+			const safeStartMs = Math.max(0, startMs);
+			const trackDurationMs = 180000; // fallback default (3min) - ideally get from API
+			if (safeStartMs + durationMs >= trackDurationMs) {
+				startMs = Math.max(0, trackDurationMs - durationMs - 500);
+				console.log("🎵 Adjusted start time to avoid end of track:", { original: safeStartMs, adjusted: startMs });
 			}
 			
-			if (attempts >= 20) {
-				console.warn("🎵 Player not ready after timeout, proceeding anyway...");
-			}
+			// Step 1: Start playback (always fresh so seek works)
+			console.log("🎵 Starting playback for track:", uri);
+			await play(uri);
 			
-			// Seek then confirm (as recommended by ChatGPT 5)
-			const { confirmedAt, confirmedPosition } = await seekThenConfirm(startMs, requestId, abortController.signal);
+			// Step 2: Wait until track is confirmed loaded
+			console.log("🎵 Waiting for track to load...");
+			const state = await waitForTrackLoaded(requestId, abortController.signal);
+			console.log("✅ Track loaded:", state.track_window.current_track.name);
 			
-			// Start playback
-			await play(uri, startMs);
+			// Step 3: Safe seek with retry
+			await safeSeek(startMs, requestId, abortController.signal);
 			
-			// Start timing
-			trueStartTsRef.current = confirmedAt;
+			// Step 4: Start timing and progress tracking
+			const trueStart = performance.now();
+			
+			// Store parameters for replay
+			lastRequestParamsRef.current = { uri, startMs, durationMs };
+			
+			// Update player state
 			updatePlayerState({ 
 				status: 'playing', 
 				isPlaying: true, 
-				startTs: confirmedAt,
+				startTs: trueStart,
 				durationMs,
 				progressMs: 0
 			});
@@ -515,41 +586,47 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			// Emit start event
 			snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
 			
-			// Start RAF progress loop
-			startRAFProgressLoop(requestId, confirmedAt, durationMs);
+			startRAFProgressLoop(requestId, trueStart, durationMs);
+			startPollingCorrectionLoop(requestId, trueStart, startMs, durationMs);
 			
-			// Start polling correction loop
-			startPollingCorrectionLoop(requestId, confirmedAt, startMs, durationMs);
-			
-			console.log("🎵 Request started successfully:", requestId);
+			// Step 5: Wait for snippet to end
+			await waitForSnippetEnd(requestId, durationMs, abortController.signal);
 			
 		} catch (error) {
-			if (error instanceof Error && error.message === 'aborted') {
-				console.log("🎵 Request aborted:", requestId);
+			if (error instanceof Error && error.name === 'AbortError') {
+				console.log("🎵 playSnippet aborted for request:", requestId);
 				return;
 			}
-			
 			console.error("🎵 Error in playSnippet:", error);
-			errorListenersRef.current.forEach(cb => { try { cb(error as Error); } catch {} });
-			updatePlayerState({ status: 'error' });
 			throw error;
+		} finally {
+			cleanupRequest(requestId);
 		}
-	}, [connect, seekThenConfirm, startRAFProgressLoop, startPollingCorrectionLoop, cleanupRequest, updatePlayerState, play]);
+	}, [connect, play]);
 
+	// Store last request parameters for replay
+	const lastRequestParamsRef = useRef<PlaySnippetParams | null>(null);
+	
 	// Replay function (as recommended by ChatGPT 5)
-	const replay = useCallback(async () => {
-		if (!currentRequestRef.current) {
-			console.log("🎵 No current request to replay");
+	const replay = useCallback(async (): Promise<void> => {
+		if (!lastRequestParamsRef.current) {
+			console.warn("🎵 No previous request to replay");
 			return;
 		}
 		
-		const { uri, startMs, durationMs } = currentRequestRef.current;
-		console.log("🎵 Replaying current snippet:", { uri, startMs, durationMs });
+		// Debounce replay to avoid double-triggering
+		if (replayTimeoutRef.current) {
+			clearTimeout(replayTimeoutRef.current);
+		}
 		
-		// Use minimal debounce (100ms) to avoid double-triggered replays
-		await new Promise(resolve => setTimeout(resolve, 100));
-		
-		await playSnippet({ uri, startMs, durationMs });
+		replayTimeoutRef.current = setTimeout(async () => {
+			try {
+				console.log("🎵 Replaying last request:", lastRequestParamsRef.current);
+				await playSnippet(lastRequestParamsRef.current!);
+			} catch (error) {
+				console.error("🎵 Replay failed:", error);
+			}
+		}, 100);
 	}, [playSnippet]);
 
 	// Stop function
