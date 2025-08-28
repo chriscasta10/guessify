@@ -2,21 +2,45 @@
 
 import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 
+// Request model for proper serialization
+interface PlayRequest {
+	requestId: number;
+	uri: string;
+	startMs: number;
+	durationMs: number;
+	abortController: AbortController;
+	createdAt: number;
+}
+
+// State model for clean status tracking
+interface PlayerState {
+	status: 'idle' | 'requesting' | 'seeking' | 'playing' | 'paused' | 'ended' | 'error';
+	currentRequestId: number | null;
+	isPlaying: boolean;
+	startTs: number | null;
+	durationMs: number | null;
+	progressMs: number;
+}
+
 type PlayerContextValue = {
+	// Core playback
+	playSnippet: (params: { uri: string; startMs: number; durationMs: number }) => Promise<void>;
+	replay: () => Promise<void>;
+	stop: () => Promise<void>;
+	seek: (ms: number) => Promise<void>;
+	
+	// State and events
+	playerState: PlayerState;
+	onSnippetStart: (cb: (durationMs: number) => void) => void;
+	onSnippetProgress: (cb: (progressMs: number) => void) => void;
+	onSnippetEnd: (cb: () => void) => void;
+	onError: (cb: (error: Error) => void) => void;
+	onStateChange: (cb: (state: PlayerState) => void) => void;
+	
+	// Connection management
 	initPlayer: () => Promise<void>;
 	connect: () => Promise<boolean>;
-	play: (uri: string, positionMs?: number) => Promise<void>;
-	pause: () => Promise<void>;
-	seek: (ms: number) => Promise<void>;
-	onStateChange: (cb: (state: unknown) => void) => void;
 	isSdkAvailable: boolean;
-	// Add timeout management
-	startPlaybackTimeout: (durationMs: number, onTimeout: () => void) => void;
-	clearPlaybackTimeout: () => void;
-	// Authoritative snippet API
-	playSnippet: (uri: string, startMs: number, durationMs: number) => Promise<void>;
-	onSnippetStart: (cb: (durationMs: number) => void) => void;
-	onSnippetEnd: (cb: () => void) => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
@@ -33,6 +57,9 @@ declare global {
 				addListener: (event: string, cb: (state: unknown) => void) => void;
 				_options?: { id?: string };
 				getCurrentState?: () => Promise<any>;
+				seek: (ms: number) => Promise<void>;
+				resume: () => Promise<void>;
+				pause: () => Promise<void>;
 			};
 		};
 		onSpotifyWebPlaybackSDKReady: () => void;
@@ -43,192 +70,265 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	const playerRef = useRef<any>(null);
 	const [ready, setReady] = useState(false);
 	const [deviceId, setDeviceId] = useState<string>("");
-	const [listeners, setListeners] = useState<Array<(s: unknown) => void>>([]);
-	const playbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-	// Snippet authority state
+	
+	// Request serialization
 	const playRequestIdRef = useRef(0);
-	const snippetRafRef = useRef<number | null>(null);
+	const currentRequestRef = useRef<PlayRequest | null>(null);
+	const playRequestsRef = useRef<Map<number, AbortController>>(new Map());
+	
+	// Timing and progress
+	const rafRef = useRef<number | null>(null);
+	const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+	const trueStartTsRef = useRef<number | null>(null);
+	
+	// Event listeners
 	const snippetStartListenersRef = useRef<Array<(d: number) => void>>([]);
+	const snippetProgressListenersRef = useRef<Array<(p: number) => void>>([]);
 	const snippetEndListenersRef = useRef<Array<() => void>>([]);
+	const errorListenersRef = useRef<Array<(e: Error) => void>>([]);
+	const stateChangeListenersRef = useRef<Array<(s: PlayerState) => void>>([]);
+	
+	// Player state
+	const [playerState, setPlayerState] = useState<PlayerState>({
+		status: 'idle',
+		currentRequestId: null,
+		isPlaying: false,
+		startTs: null,
+		durationMs: null,
+		progressMs: 0
+	});
 
+	// Update player state and notify listeners
+	const updatePlayerState = useCallback((updates: Partial<PlayerState>) => {
+		const newState = { ...playerState, ...updates };
+		setPlayerState(newState);
+		stateChangeListenersRef.current.forEach(cb => { try { cb(newState); } catch {} });
+	}, [playerState]);
+
+	// Cleanup function for a specific request
+	const cleanupRequest = useCallback((requestId: number) => {
+		if (rafRef.current) {
+			cancelAnimationFrame(rafRef.current);
+			rafRef.current = null;
+		}
+		if (pollIntervalRef.current) {
+			clearTimeout(pollIntervalRef.current);
+			pollIntervalRef.current = null;
+		}
+		playRequestsRef.current.delete(requestId);
+		trueStartTsRef.current = null;
+	}, []);
+
+	// Cancel all active requests
+	const cancelAllRequests = useCallback(async () => {
+		// Abort all active requests
+		playRequestsRef.current.forEach(controller => controller.abort());
+		playRequestsRef.current.clear();
+		
+		// Cleanup timers
+		cleanupRequest(playRequestIdRef.current);
+		
+		// Pause player
+		try {
+			if (playerRef.current) {
+				await playerRef.current.pause();
+			}
+		} catch (error) {
+			console.log("Error pausing player during cleanup:", error);
+		}
+		
+		// Reset state
+		updatePlayerState({
+			status: 'idle',
+			currentRequestId: null,
+			isPlaying: false,
+			startTs: null,
+			durationMs: null,
+			progressMs: 0
+		});
+	}, [cleanupRequest, updatePlayerState]);
+
+	// Seek then confirm pattern (as recommended by ChatGPT 5)
+	const seekThenConfirm = useCallback(async (targetMs: number, requestId: number, signal: AbortSignal): Promise<{ confirmedAt: number; confirmedPosition: number }> => {
+		console.log("🎵 Seeking to position:", targetMs, "requestId:", requestId);
+		
+		await playerRef.current.seek(targetMs);
+		
+		// Wait for confirmation via getCurrentState
+		for (let i = 0; i < 40; i++) { // ~2s total wait max
+			if (signal.aborted) throw new Error('aborted');
+			
+			const state = await playerRef.current.getCurrentState();
+			const position = state?.position ?? -1;
+			const isPlaying = state && !state.paused && !state.loading;
+			
+			console.log("🎵 Seek confirmation check:", { i, position, isPlaying, targetMs, requestId });
+			
+			if (position >= targetMs - 20 && isPlaying) {
+				// We've advanced to the target region and playback has started
+				const confirmedAt = performance.now();
+				console.log("🎵 Seek confirmed at:", confirmedAt, "position:", position, "requestId:", requestId);
+				return { confirmedAt, confirmedPosition: position };
+			}
+			
+			await new Promise(resolve => setTimeout(resolve, 50));
+		}
+		
+		throw new Error('Failed to confirm seek position');
+	}, []);
+
+	// RAF progress loop (as recommended by ChatGPT 5)
+	const startRAFProgressLoop = useCallback((requestId: number, trueStartTs: number, durationMs: number) => {
+		console.log("🎵 Starting RAF progress loop:", { requestId, trueStartTs, durationMs });
+		
+		const tick = () => {
+			if (requestId !== playRequestIdRef.current) return; // stale
+			
+			const elapsed = performance.now() - trueStartTs;
+			const progressMs = Math.min(elapsed, durationMs);
+			
+			// Emit progress
+			snippetProgressListenersRef.current.forEach(cb => { try { cb(progressMs); } catch {} });
+			updatePlayerState({ progressMs });
+			
+			if (elapsed >= durationMs) {
+				// End handled by poll loop for safety
+				return;
+			}
+			
+			rafRef.current = requestAnimationFrame(tick);
+		};
+		
+		rafRef.current = requestAnimationFrame(tick);
+	}, [updatePlayerState]);
+
+	// Polling correction loop (as recommended by ChatGPT 5)
+	const startPollingCorrectionLoop = useCallback((requestId: number, trueStartTs: number, startMs: number, durationMs: number) => {
+		console.log("🎵 Starting polling correction loop:", { requestId, trueStartTs, startMs, durationMs });
+		
+		let corrections = 0;
+		
+		const poll = async () => {
+			if (requestId !== playRequestIdRef.current) return;
+			
+			try {
+				const state = await playerRef.current.getCurrentState();
+				if (!state) {
+					pollIntervalRef.current = setTimeout(poll, 100);
+					return;
+				}
+				
+				const actualPos = state.position; // ms
+				const wallElapsed = performance.now() - trueStartTs;
+				const posElapsed = actualPos - startMs;
+				
+				console.log("🎵 Poll correction check:", { requestId, actualPos, wallElapsed, posElapsed, corrections });
+				
+				// If they diverge by > 100ms, correct the UI baseline
+				if (Math.abs(posElapsed - wallElapsed) > 100) {
+					trueStartTsRef.current = performance.now() - posElapsed;
+					corrections++;
+					console.log("🎵 Corrected timing baseline:", { corrections, newBaseline: trueStartTsRef.current });
+				}
+				
+				// Enforce stop if position >= startMs + duration - jitter
+				if (posElapsed >= durationMs - 40) {
+					console.log("🎵 Poll loop enforcing stop:", { requestId, posElapsed, durationMs });
+					await playerRef.current.pause();
+					
+					// Emit end event
+					snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
+					updatePlayerState({ status: 'ended', isPlaying: false });
+					
+					// Cleanup
+					cleanupRequest(requestId);
+					return;
+				}
+				
+				pollIntervalRef.current = setTimeout(poll, 50);
+			} catch (error) {
+				console.error("🎵 Error in poll loop:", error);
+				pollIntervalRef.current = setTimeout(poll, 100);
+			}
+		};
+		
+		poll();
+	}, [cleanupRequest, updatePlayerState]);
+
+	// Initialize Spotify SDK
 	const initPlayer = useCallback(async () => {
 		if (ready) return;
+		
 		await new Promise<void>((resolve) => {
 			if (window.Spotify) return resolve();
+			
 			const script = document.createElement("script");
 			script.src = "https://sdk.scdn.co/spotify-player.js";
 			script.async = true;
 			window.onSpotifyWebPlaybackSDKReady = () => resolve();
 			document.body.appendChild(script);
 		});
+		
 		setReady(true);
 	}, [ready]);
 
-	// Timeout management functions
-	const startPlaybackTimeout = useCallback((durationMs: number, onTimeout: () => void) => {
-		// Clear any existing timeout
-		if (playbackTimeoutRef.current) {
-			clearTimeout(playbackTimeoutRef.current);
-		}
-		
-		console.log(`PlayerProvider: Starting playback timeout for ${durationMs}ms`);
-		playbackTimeoutRef.current = setTimeout(() => {
-			console.log("PlayerProvider: Playback timeout triggered!");
-			onTimeout();
-			playbackTimeoutRef.current = null;
-		}, durationMs);
-	}, []);
-
-	const clearPlaybackTimeout = useCallback(() => {
-		if (playbackTimeoutRef.current) {
-			console.log("PlayerProvider: Clearing playback timeout");
-			clearTimeout(playbackTimeoutRef.current);
-			playbackTimeoutRef.current = null;
-		}
-	}, []);
-
+	// Connect to Spotify
 	const connect = useCallback(async () => {
-		console.log("PlayerProvider: connect() called");
+		console.log("🎵 Connecting to Spotify...");
+		
 		if (playerRef.current && deviceId) {
-			console.log("PlayerProvider: player already exists with device ID, returning true");
+			console.log("🎵 Already connected with device ID:", deviceId);
 			return true;
 		}
 		
-		console.log("PlayerProvider: fetching token...");
-		const tokenRes = await fetch("/api/auth/token");
-		console.log("PlayerProvider: token response status:", tokenRes.status);
-		
-		const tokenJson = (await tokenRes.json().catch(() => ({}))) as { accessToken?: string };
-		console.log("PlayerProvider: token response:", tokenJson);
-		
-		const accessToken = tokenJson?.accessToken as string | undefined;
-		if (!accessToken) {
-			console.log("PlayerProvider: no access token available");
-			return false;
-		}
-		
-		if (!window.Spotify) {
-			console.log("PlayerProvider: window.Spotify not available");
-			return false;
-		}
-		
-		console.log("PlayerProvider: creating new Spotify Player...");
 		try {
+			// Get token
+			const tokenRes = await fetch("/api/auth/token");
+			if (!tokenRes.ok) {
+				throw new Error(`Token fetch failed: ${tokenRes.status}`);
+			}
+			const { access_token } = await tokenRes.json();
+			
+			// Create player
 			playerRef.current = new window.Spotify.Player({
 				name: "Guessify Player",
-				getOAuthToken: (cb: (t: string) => void) => {
-					console.log("PlayerProvider: getOAuthToken callback called");
-					cb(accessToken);
-				},
-				volume: 0.8,
+				getOAuthToken: (cb) => cb(access_token),
+				volume: 0.8
 			});
 			
-			console.log("PlayerProvider: player created, adding listeners...");
-			
-			// CRITICAL: Handle player_state_changed to detect when playback actually starts
-			playerRef.current.addListener("player_state_changed", (state: unknown) => {
-				console.log("PlayerProvider: player state changed:", state);
-				
-				// Log the full state for debugging
-				const playerState = state as any;
-				console.log("PlayerProvider: Full state details:", {
-					is_playing: playerState?.is_playing,
-					paused: playerState?.paused,
-					loading: playerState?.loading,
-					position: playerState?.position,
-					duration: playerState?.duration,
-					track: playerState?.track,
-					device_id: playerState?.device_id
-				});
-				
-				// CRITICAL FIX: Extract is_playing from the actual state properties
-				// The is_playing field might be undefined, but we can derive it
-				const isActuallyPlaying = playerState && !playerState.paused && !playerState.loading;
-				console.log("PlayerProvider: Derived is_playing status:", isActuallyPlaying);
-				
-				// Notify listeners for all state changes
-				listeners.forEach((l, index) => {
-					try { l(state); } catch (e) { console.error(`PlayerProvider: Error in listener ${index}:`, e); }
-				});
+			// Add listeners
+			playerRef.current.addListener("ready", ({ device_id }: { device_id: string }) => {
+				console.log("🎵 Player ready with device ID:", device_id);
+				setDeviceId(device_id);
 			});
 			
-			// Create a promise to wait for the device ID
-			let deviceIdResolve: (value: string) => void;
-			const deviceIdPromise = new Promise<string>((resolve) => {
-				deviceIdResolve = resolve;
+			playerRef.current.addListener("not_ready", ({ device_id }: { device_id: string }) => {
+				console.log("🎵 Player not ready:", device_id);
 			});
 			
-			playerRef.current.addListener("ready", (data: unknown) => {
-				console.log("PlayerProvider: player ready event:", data);
-				// Extract device ID from the ready event data
-				const readyData = data as { device_id?: string };
-				if (readyData?.device_id) {
-					const newDeviceId = readyData.device_id;
-					console.log("PlayerProvider: device ID captured from ready event:", newDeviceId);
-					setDeviceId(newDeviceId);
-					deviceIdResolve(newDeviceId);
-				} else {
-					console.log("PlayerProvider: device ID not found in ready event data");
-				}
+			playerRef.current.addListener("player_state_changed", (state: any) => {
+				console.log("🎵 Player state changed:", state);
 			});
 			
-			playerRef.current.addListener("not_ready", (data: unknown) => {
-				console.log("PlayerProvider: player not ready event:", data);
-			});
-			
-			playerRef.current.addListener("initialization_error", (data: unknown) => {
-				console.log("PlayerProvider: initialization error:", data);
-			});
-			
-			playerRef.current.addListener("authentication_error", (data: unknown) => {
-				console.log("PlayerProvider: authentication error:", data);
-			});
-			
-			playerRef.current.addListener("account_error", (data: unknown) => {
-				console.log("PlayerProvider: account error:", data);
-			});
-			
-			playerRef.current.addListener("playback_error", (data: unknown) => {
-				console.log("PlayerProvider: playback error:", data);
-			});
-			
-			console.log("PlayerProvider: attempting to connect...");
+			// Connect
 			const connected = await playerRef.current.connect();
-			console.log("PlayerProvider: connect() result:", connected);
-			
-			if (connected) {
-				console.log("PlayerProvider: successfully connected!");
-				console.log("PlayerProvider: player options:", playerRef.current._options);
-				
-				// Wait for the device ID to be available with a timeout
-				console.log("PlayerProvider: waiting for device ID...");
-				try {
-					const capturedDeviceId = await Promise.race([
-						deviceIdPromise,
-						new Promise<string>((_, reject) => 
-							setTimeout(() => reject(new Error("Device ID timeout")), 5000)
-						)
-					]);
-					console.log("PlayerProvider: device ID received:", capturedDeviceId);
-					return true;
-				} catch (error) {
-					console.error("PlayerProvider: error waiting for device ID:", error);
-					return false;
-				}
+			if (!connected) {
+				throw new Error("Failed to connect to Spotify");
 			}
 			
-			return false;
+			console.log("🎵 Successfully connected to Spotify");
+			return true;
+			
 		} catch (error) {
-			console.error("PlayerProvider: error during connection:", error);
+			console.error("🎵 Connection error:", error);
 			return false;
 		}
-	}, [listeners]);
+	}, [deviceId]);
 
+	// Play function for Spotify Web Playback SDK
 	const play = useCallback(async (uri: string, positionMs = 0) => {
-		console.log("PlayerProvider: play() called", { uri, positionMs });
+		console.log("🎵 Play called:", { uri, positionMs });
 		const currentDeviceId = deviceId || (playerRef.current?._options?.id);
-		console.log("PlayerProvider: device ID for play:", currentDeviceId);
 		
 		if (!currentDeviceId) {
 			throw new Error("No device ID available - player not ready");
@@ -241,143 +341,169 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				body: JSON.stringify({ deviceId: currentDeviceId, uri, positionMs }),
 			});
 			
-			console.log("PlayerProvider: play API response status:", response.status);
 			if (!response.ok) {
 				const errorText = await response.text();
-				console.error("PlayerProvider: play API error:", { status: response.status, error: errorText });
 				throw new Error(`Play API failed: ${response.status} - ${errorText}`);
 			}
 			
-			const result = await response.json();
-			console.log("PlayerProvider: play API success:", result);
+			console.log("🎵 Play API success");
 		} catch (error) {
-			console.error("PlayerProvider: play() error:", error);
+			console.error("🎵 Play error:", error);
 			throw error;
 		}
 	}, [deviceId]);
 
+	// Pause function for Spotify Web Playback SDK
 	const pause = useCallback(async () => {
-		console.log("PlayerProvider: pause() called");
+		console.log("🎵 Pause called");
 		try {
 			const response = await fetch("/api/player/pause", { method: "PUT" });
-			console.log("PlayerProvider: pause API response status:", response.status);
 			if (!response.ok) {
-				const errorText = await response.text();
-				console.error("PlayerProvider: pause API error:", { status: response.status, error: errorText });
+				console.error("🎵 Pause API error:", response.status);
 			}
 		} catch (error) {
-			console.error("PlayerProvider: pause() error:", error);
+			console.error("🎵 Pause error:", error);
 		}
 	}, []);
 
-	const seek = useCallback(async (ms: number) => {
-		console.log("PlayerProvider: seek() called", { ms });
-		const currentDeviceId = deviceId || (playerRef.current?._options?.id);
-		console.log("PlayerProvider: device ID for seek:", currentDeviceId);
+	// Main playSnippet function (as recommended by ChatGPT 5)
+	const playSnippet = useCallback(async ({ uri, startMs, durationMs }: { uri: string; startMs: number; durationMs: number }) => {
+		console.log("🎵 playSnippet called:", { uri, startMs, durationMs });
 		
-		if (!currentDeviceId) {
-			throw new Error("No device ID available - player not ready");
+		// Cancel previous request
+		if (currentRequestRef.current) {
+			console.log("🎵 Cancelling previous request:", currentRequestRef.current.requestId);
+			currentRequestRef.current.abortController.abort();
+			cleanupRequest(currentRequestRef.current.requestId);
 		}
+		
+		// Create new request
+		const requestId = ++playRequestIdRef.current;
+		const abortController = new AbortController();
+		const request: PlayRequest = {
+			requestId,
+			uri,
+			startMs,
+			durationMs,
+			abortController,
+			createdAt: performance.now()
+		};
+		
+		currentRequestRef.current = request;
+		playRequestsRef.current.set(requestId, abortController);
+		
+		console.log("🎵 Starting new request:", requestId);
+		updatePlayerState({ status: 'requesting', currentRequestId: requestId });
 		
 		try {
-			const response = await fetch("/api/player/seek", {
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ deviceId: currentDeviceId, positionMs: ms }),
+			// Ensure device is connected
+			await connect();
+			
+			// Seek then confirm (as recommended by ChatGPT 5)
+			const { confirmedAt, confirmedPosition } = await seekThenConfirm(startMs, requestId, abortController.signal);
+			
+			// Start playback
+			await play(uri, startMs);
+			
+			// Start timing
+			trueStartTsRef.current = confirmedAt;
+			updatePlayerState({ 
+				status: 'playing', 
+				isPlaying: true, 
+				startTs: confirmedAt,
+				durationMs,
+				progressMs: 0
 			});
 			
-			console.log("PlayerProvider: seek API response status:", response.status);
-			if (!response.ok) {
-				const errorText = await response.text();
-				console.error("PlayerProvider: seek API error:", { status: response.status, error: errorText });
-				throw new Error(`Seek API failed: ${response.status} - ${errorText}`);
+			// Emit start event
+			snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
+			
+			// Start RAF progress loop
+			startRAFProgressLoop(requestId, confirmedAt, durationMs);
+			
+			// Start polling correction loop
+			startPollingCorrectionLoop(requestId, confirmedAt, startMs, durationMs);
+			
+			console.log("🎵 Request started successfully:", requestId);
+			
+		} catch (error) {
+			if (error instanceof Error && error.message === 'aborted') {
+				console.log("🎵 Request aborted:", requestId);
+				return;
 			}
 			
-			const result = await response.json();
-			console.log("PlayerProvider: seek API success:", result);
-		} catch (error) {
-			console.error("PlayerProvider: seek() error:", error);
+			console.error("🎵 Error in playSnippet:", error);
+			errorListenersRef.current.forEach(cb => { try { cb(error as Error); } catch {} });
+			updatePlayerState({ status: 'error' });
 			throw error;
 		}
-	}, [deviceId]);
+	}, [connect, seekThenConfirm, startRAFProgressLoop, startPollingCorrectionLoop, cleanupRequest, updatePlayerState, play]);
 
-	const onStateChange = useCallback((cb: (s: unknown) => void) => {
-		setListeners((prev) => prev.concat(cb));
+	// Replay function (as recommended by ChatGPT 5)
+	const replay = useCallback(async () => {
+		if (!currentRequestRef.current) {
+			console.log("🎵 No current request to replay");
+			return;
+		}
+		
+		const { uri, startMs, durationMs } = currentRequestRef.current;
+		console.log("🎵 Replaying current snippet:", { uri, startMs, durationMs });
+		
+		// Use minimal debounce (100ms) to avoid double-triggered replays
+		await new Promise(resolve => setTimeout(resolve, 100));
+		
+		await playSnippet({ uri, startMs, durationMs });
+	}, [playSnippet]);
+
+	// Stop function
+	const stop = useCallback(async () => {
+		console.log("🎵 Stop requested");
+		await cancelAllRequests();
+	}, [cancelAllRequests]);
+
+	// Seek function
+	const seek = useCallback(async (ms: number) => {
+		console.log("🎵 Seek requested:", ms);
+		if (playerRef.current) {
+			await playerRef.current.seek(ms);
+		}
 	}, []);
 
-	// Snippet event subscriptions
-	const onSnippetStart = useCallback((cb: (d: number) => void) => {
+	// Event subscription functions
+	const onSnippetStart = useCallback((cb: (durationMs: number) => void) => {
 		snippetStartListenersRef.current.push(cb);
 	}, []);
+	
+	const onSnippetProgress = useCallback((cb: (progressMs: number) => void) => {
+		snippetProgressListenersRef.current.push(cb);
+	}, []);
+	
 	const onSnippetEnd = useCallback((cb: () => void) => {
 		snippetEndListenersRef.current.push(cb);
 	}, []);
-
-	const cancelSnippetTimers = () => {
-		if (snippetRafRef.current) cancelAnimationFrame(snippetRafRef.current);
-		snippetRafRef.current = null;
-		clearPlaybackTimeout();
-	};
-
-	const playSnippet = useCallback(async (uri: string, startMs: number, durationMs: number) => {
-		console.log("🎵 playSnippet called:", { uri, startMs, durationMs, requestId: playRequestIdRef.current + 1 });
-		
-		// Cancel any in-flight snippet and bump requestId
-		cancelSnippetTimers();
-		playRequestIdRef.current++;
-		const requestId = playRequestIdRef.current;
-		
-		console.log("🎵 Starting snippet playback, requestId:", requestId);
-		
-		// Start the timer IMMEDIATELY to avoid delay
-		const trueStart = performance.now();
-		console.log("🎵 Timer started immediately at:", new Date().toISOString());
-		
-		// Fire start event immediately
-		snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
-		
-		try { 
-			await pause(); 
-			console.log("🎵 Paused previous playback");
-		} catch (error) {
-			console.log("🎵 Pause error (non-critical):", error);
-		}
-		
-		await seek(startMs);
-		console.log("🎵 Seeked to position:", startMs);
-		
-		await play(uri, startMs);
-		console.log("🎵 Started play command");
-		
-		// Run the timer immediately - no more delays
-		const tick = async () => {
-			if (requestId !== playRequestIdRef.current) return; // canceled
-			const elapsed = performance.now() - trueStart;
-			if (elapsed >= durationMs) {
-				console.log("🎵 Timer completed, pausing and firing end event");
-				await pause();
-				snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
-				cancelSnippetTimers();
-				return;
-			}
-			snippetRafRef.current = requestAnimationFrame(tick);
-		};
-		snippetRafRef.current = requestAnimationFrame(tick);
-	}, [pause, play, seek, clearPlaybackTimeout]);
+	
+	const onError = useCallback((cb: (error: Error) => void) => {
+		errorListenersRef.current.push(cb);
+	}, []);
+	
+	const onStateChange = useCallback((cb: (state: PlayerState) => void) => {
+		stateChangeListenersRef.current.push(cb);
+	}, []);
 
 	const value: PlayerContextValue = {
+		playSnippet,
+		replay,
+		stop,
+		seek,
+		playerState,
+		onSnippetStart,
+		onSnippetProgress,
+		onSnippetEnd,
+		onError,
+		onStateChange,
 		initPlayer,
 		connect,
-		play,
-		pause,
-		seek,
-		onStateChange,
 		isSdkAvailable: ready,
-		startPlaybackTimeout,
-		clearPlaybackTimeout,
-		playSnippet,
-		onSnippetStart,
-		onSnippetEnd,
 	};
 
 	return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
