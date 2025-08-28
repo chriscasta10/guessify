@@ -665,6 +665,14 @@ export function GuessifyGame() {
 			console.log(`🎯 Moving from level ${currentRound.currentLevelIndex} (${GAME_LEVELS[currentRound.currentLevelIndex].name}) to level ${nextLevelIndex} (${nextLevel.name})`);
 			console.log(`⏱️ Duration changing from ${formatTime(GAME_LEVELS[currentRound.currentLevelIndex].duration)} to ${formatTime(nextLevel.duration)}`);
 			
+			// If currently playing/replaying, force stop immediately so More Time takes over
+			if (isPlayingRef.current) {
+				clearPlaybackTimeout();
+				isPlayingRef.current = false;
+				try { pause(); } catch {}
+				if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+			}
+			
 			// CRITICAL FIX: Update the round state FIRST
 			setCurrentRound(prev => prev ? {
 				...prev,
@@ -688,9 +696,9 @@ export function GuessifyGame() {
 			setTimeout(() => {
 				// CRITICAL FIX: Pass the new level directly instead of relying on state
 				void playCurrentLevelWithLevel(nextLevel);
-			}, 100);
+			}, 25);
 		}
-	}, [currentRound]);
+	}, [currentRound, clearPlaybackTimeout, pause, playCurrentLevelWithLevel]);
 
 	const submitGuess = useCallback(() => {
 		if (!currentRound || !selectedSearchResult) return;
@@ -856,7 +864,7 @@ export function GuessifyGame() {
 	};
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-white relative overflow-hidden">
+		<div className="min-h-screen w-full bg-gradient-to-br from-black via-gray-900 to-black text-white relative overflow-hidden">
 			{/* Background Design Elements - Full Screen Coverage */}
 			{/* Left Side - Extended Coverage */}
 			<div className="absolute left-0 top-0 w-1/3 h-full">
@@ -942,7 +950,7 @@ export function GuessifyGame() {
 				</div>
 			)}
 
-			<div className="container mx-auto px-6 sm:px-8 lg:px-12 py-8 max-w-[1400px] w-full relative z-10">
+			<div className="mx-auto px-6 sm:px-10 lg:px-16 xl:px-24 py-8 w-full relative z-10">
 				{/* Game Header */}
 				<div className="text-center mb-8">
 					<h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent mb-4">
@@ -1108,7 +1116,7 @@ export function GuessifyGame() {
 								</button>
 								<button
 									onClick={playCurrentLevel}
-									className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-gray-500/25 transition-all duration-300 transform hover:scale-105"
+									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
 								>
 									🔁 Replay
 								</button>
