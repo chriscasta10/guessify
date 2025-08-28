@@ -124,25 +124,37 @@ export function GuessifyGame() {
 	}, [isSdkAvailable, connect]);
 
 	// CRITICAL FIX: Fetch artist image when album data is missing
-	const fetchArtistImage = useCallback(async (artistName: string) => {
+	const fetchArtistImage = useCallback(async (track: any) => {
 		try {
-			console.log("🎨 Fetching artist image for:", artistName);
+			// Get artist ID from track object (this is the correct way)
+			const artistId = track.artists?.[0]?.id;
+			const artistName = track.artists?.[0]?.name || track.artist;
 			
-			// Search for the artist to get their image
-			const response = await fetch(`/api/spotify-search?q=${encodeURIComponent(artistName)}&type=artist&limit=1`);
-			if (response.ok) {
-				const data = await response.json();
-				const artists = data.artists?.items;
-				
-				if (artists && artists.length > 0 && artists[0].images && artists[0].images.length > 0) {
-					const imageUrl = artists[0].images[0].url;
-					console.log("✅ Found artist image:", imageUrl);
-					return imageUrl;
-				}
+			if (!artistId) {
+				console.log("⚠️ No artist ID available for track:", track.name);
+				return null;
 			}
 			
-			console.log("⚠️ No artist image found for:", artistName);
-			return null;
+			console.log("🎨 Fetching artist image for:", artistName, "ID:", artistId);
+			
+			// Call Spotify's Artist endpoint directly (this is the correct approach)
+			const response = await fetch(`/api/artists/${artistId}`);
+			if (response.ok) {
+				const artistData = await response.json();
+				const artistImages = artistData.images;
+				
+				if (artistImages && artistImages.length > 0) {
+					const imageUrl = artistImages[0].url;
+					console.log("✅ Found artist image:", imageUrl);
+					return imageUrl;
+				} else {
+					console.log("⚠️ Artist has no images:", artistName);
+					return null;
+				}
+			} else {
+				console.error("❌ Failed to fetch artist data:", response.status, response.statusText);
+				return null;
+			}
 		} catch (error) {
 			console.error("❌ Error fetching artist image:", error);
 			return null;
@@ -1008,7 +1020,7 @@ export function GuessifyGame() {
 														console.error("❌ Album image failed to load:", firstImageUrl, e);
 														setAudioDebug("Album image failed, trying artist image...");
 														// Try to fetch artist image as fallback
-														void fetchArtistImage(artistName);
+														void fetchArtistImage(track);
 													}}
 												/>
 											);
@@ -1035,7 +1047,7 @@ export function GuessifyGame() {
 											console.log("🎨 Attempting to fetch artist image for:", artistName);
 											
 											// Fetch artist image in background
-											fetchArtistImage(artistName).then(imageUrl => {
+											fetchArtistImage(track).then(imageUrl => {
 												if (imageUrl) {
 													setFetchedArtistImages(prev => ({
 														...prev,
@@ -1093,11 +1105,13 @@ export function GuessifyGame() {
 								<div className="text-xs text-gray-300 space-y-1">
 									<div>Track: {endScreenData.track.name}</div>
 									<div>Artist: {endScreenData.track.artist}</div>
+									<div>Artist ID: {endScreenData.track.artists?.[0]?.id || 'Missing'}</div>
 									<div>Has Album: {endScreenData.track.album ? 'Yes' : 'No'}</div>
 									<div>Album Images: {endScreenData.track.album?.images?.length || 0}</div>
 									<div>First Image URL: {endScreenData.track.album?.images?.[0]?.url ? 'Available' : 'Missing'}</div>
 									<div>Fetched Artist Image: {fetchedArtistImages[endScreenData.track.artist] ? 'Available' : 'Missing'}</div>
-									<div>Image Source: {endScreenData.track.album?.images?.[0]?.url ? 'Album' : fetchedArtistImages[endScreenData.track.artist] ? 'Artist Search' : 'Fallback'}</div>
+									<div>Image Source: {endScreenData.track.album?.images?.[0]?.url ? 'Album' : fetchedArtistImages[endScreenData.track.artist] ? 'Artist API' : 'Fallback'}</div>
+									<div>Track Object Keys: {Object.keys(endScreenData.track).join(', ')}</div>
 								</div>
 							</div>
 						</div>
