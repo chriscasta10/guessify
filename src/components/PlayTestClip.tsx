@@ -323,7 +323,9 @@ export function GuessifyGame() {
 				setAudioDebug(`SDK playback confirmed, starting ${formatTime(currentLevelRef.current.duration)} timeout...`);
 				
 				// Start the timeout now that playback has actually started
-				startPlaybackTimeout(currentLevelRef.current.duration, () => {
+				const timeoutMs = pendingDurationRef.current ?? currentLevelRef.current.duration;
+				pendingDurationRef.current = null;
+				startPlaybackTimeout(timeoutMs, () => {
 					console.log("🚨 SDK TIMEOUT TRIGGERED - STOPPING AUDIO");
 					isPlayingRef.current = false;
 					setGameState("guessing");
@@ -337,7 +339,7 @@ export function GuessifyGame() {
 					}
 				});
 				// Kick off progress bar
-				startProgress(currentLevelRef.current.duration);
+				startProgress(timeoutMs);
 				// Safety hard-cap: ensure complete stop even if state event lags
 				clearHardCapTimeout();
 				hardCapTimeoutRef.current = setTimeout(() => {
@@ -348,7 +350,7 @@ export function GuessifyGame() {
 					if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 					stopProgress();
 					setGameState("guessing");
-				}, currentLevelRef.current.duration + 40);
+				}, (pendingDurationRef.current ?? currentLevelRef.current.duration) + 40);
 			} else {
 				console.log("GuessifyGame: State change ignored - conditions not met:", {
 					hasState: !!playerState,
@@ -517,6 +519,8 @@ export function GuessifyGame() {
 		// CRITICAL FIX: Use the passed level OR get from currentRound state
 		const currentLevel = specificLevel || GAME_LEVELS[currentRound.currentLevelIndex];
 		const track = currentRound.track;
+		// Record intended duration for the upcoming playback start event
+		pendingDurationRef.current = currentLevel.duration;
 		
 		console.log("🎵 playCurrentLevelWithLevel called with:", {
 			specificLevel: specificLevel?.name || "none",
@@ -683,7 +687,9 @@ export function GuessifyGame() {
 					console.log("Preview audio started, setting timeout for", currentLevel.duration, "ms");
 					
 					// Set timeout ONLY after audio actually starts playing
-					startPlaybackTimeout(currentLevel.duration, () => {
+					const previewDur = pendingDurationRef.current ?? currentLevel.duration;
+					pendingDurationRef.current = null;
+					startPlaybackTimeout(previewDur, () => {
 						console.log("🚨 PREVIEW TIMEOUT TRIGGERED - STOPPING AUDIO");
 						isPlayingRef.current = false;
 						
@@ -711,7 +717,7 @@ export function GuessifyGame() {
 						if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 						stopProgress();
 						setGameState("guessing");
-					}, currentLevel.duration + 40);
+					}, previewDur + 40);
 				};
 				audioRef.current.onended = () => setAudioDebug("Audio ended");
 				audioRef.current.onerror = (e) => setAudioDebug("Audio error: " + e);
