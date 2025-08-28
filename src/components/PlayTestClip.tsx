@@ -349,6 +349,8 @@ export function GuessifyGame() {
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
 		currentSnippetPositionRef.current = 0; // Reset snippet position
+		try { pause(); } catch {}
+		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
 		// CRITICAL FIX: Only reset current score/streak if this is a completely new game
 		// If continuing from a correct guess, keep the accumulated score/streak
@@ -401,7 +403,7 @@ export function GuessifyGame() {
 		if (track.previewUrl) {
 			void preloadAudio(track);
 		}
-	}, [tracks, loading, error, loadAll, clearPlaybackTimeout, hasStartedGame, preloadAudio]);
+	}, [tracks, loading, error, loadAll, clearPlaybackTimeout, hasStartedGame, preloadAudio, pause]);
 
 	// CRITICAL FIX: New function that takes a specific level parameter
 	const playCurrentLevelWithLevel = useCallback(async (specificLevel?: any) => {
@@ -679,6 +681,12 @@ export function GuessifyGame() {
 	const submitGuess = useCallback(() => {
 		if (!currentRound || !selectedSearchResult) return;
 
+		// Stop any playback immediately to prevent bleed into end screen or next round
+		clearPlaybackTimeout();
+		isPlayingRef.current = false;
+		try { pause(); } catch {}
+		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+
 		// Check if guess is correct
 		const isCorrect = selectedSearchResult.id === currentRound.track.id;
 
@@ -722,7 +730,7 @@ export function GuessifyGame() {
 			});
 			setGameState("gameOver");
 		}
-	}, [currentRound, selectedSearchResult, gameStats.currentScore, gameStats.currentStreak]);
+	}, [currentRound, selectedSearchResult, gameStats.currentScore, gameStats.currentStreak, clearPlaybackTimeout, pause]);
 
 	const giveUp = useCallback(() => {
 		if (!currentRound) return;
@@ -1052,7 +1060,7 @@ export function GuessifyGame() {
 								</button>
 								<button
 									onClick={playCurrentLevel}
-									className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-gray-500/25 transition-all duration-300 transform hover:scale-105"
+									className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-gray-500/25 transition-all duration-300 transform hover:scale-105"
 								>
 									🔁 Replay
 								</button>

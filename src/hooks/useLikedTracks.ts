@@ -7,10 +7,10 @@ type SpotifySavedTracksResponse = {
 			id: string;
 			uri: string;
 			name: string;
-			artists: Array<{ id: string; name: string }>; // ✅ FIXED: Include artist IDs
+			artists: Array<{ id: string; name: string }>;
 			preview_url: string | null;
 			duration_ms: number;
-			album: { // ✅ FIXED: Include album data
+			album: {
 				name: string;
 				images: Array<{ url: string; width: number; height: number }>;
 			};
@@ -20,17 +20,32 @@ type SpotifySavedTracksResponse = {
 	total?: number; // Added for total count
 };
 
+const TRACKS_CACHE_KEY = 'guessify-tracks';
+const TRACKS_CACHE_VERSION_KEY = 'guessify-tracks-version';
+const TRACKS_CACHE_VERSION = '2'; // bump when shape changes
+
 export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	const [tracks, setTracks] = useState<LikedTrack[]>(() => {
-		// Load from localStorage on init if available
+		// Load from localStorage on init if available, with schema validation
 		if (typeof window !== 'undefined') {
-			const saved = localStorage.getItem('guessify-tracks');
-			if (saved) {
-				try {
-					return JSON.parse(saved);
-				} catch (e) {
-					console.error('Failed to parse saved tracks:', e);
+			try {
+				const savedVersion = localStorage.getItem(TRACKS_CACHE_VERSION_KEY);
+				const saved = localStorage.getItem(TRACKS_CACHE_KEY);
+				if (saved && savedVersion === TRACKS_CACHE_VERSION) {
+					const parsed: LikedTrack[] = JSON.parse(saved);
+					// Validate that items include artists with id and album images
+					const valid = Array.isArray(parsed) && parsed.length > 0 && parsed.every(t => t && Array.isArray((t as any).artists) && (t as any).artists.length > 0 && (t as any).artists[0].id && (t as any).album && Array.isArray((t as any).album.images));
+					if (valid) {
+						return parsed;
+					}
 				}
+				// Invalidate old cache (missing version or invalid shape)
+				localStorage.removeItem(TRACKS_CACHE_KEY);
+				localStorage.setItem(TRACKS_CACHE_VERSION_KEY, TRACKS_CACHE_VERSION);
+			} catch (e) {
+				console.error('Failed to read saved tracks, clearing cache:', e);
+				localStorage.removeItem(TRACKS_CACHE_KEY);
+				localStorage.setItem(TRACKS_CACHE_VERSION_KEY, TRACKS_CACHE_VERSION);
 			}
 		}
 		return [];
@@ -42,7 +57,8 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	// Save tracks to localStorage whenever they change
 	useEffect(() => {
 		if (typeof window !== 'undefined' && tracks.length > 0) {
-			localStorage.setItem('guessify-tracks', JSON.stringify(tracks));
+			localStorage.setItem(TRACKS_CACHE_KEY, JSON.stringify(tracks));
+			localStorage.setItem(TRACKS_CACHE_VERSION_KEY, TRACKS_CACHE_VERSION);
 		}
 	}, [tracks]);
 
@@ -60,11 +76,9 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 			id: track.id,
 			uri: track.uri,
 			name: track.name,
-			artist: track.artists.map((a) => a.name).join(", "), // Keep for backward compatibility
-			// ✅ FIXED: Preserve full artist data
+			artist: track.artists.map((a) => a.name).join(", "), // Backward-compatible string
 			artists: track.artists, // Full artists array with IDs
-			// ✅ FIXED: Preserve album data
-			album: track.album,
+			album: track.album, // Album with images
 			hasPreview: Boolean(track.preview_url),
 			previewUrl: track.preview_url ?? undefined,
 			durationMs: track.duration_ms,
@@ -158,12 +172,6 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 			setLoading(false);
 		}
 	}, [fetchPage, limit, normalize, tracks.length]);
-
-	// Remove the useEffect that was causing infinite API calls
-	// useEffect(() => {
-	// 	console.log("useLikedTracks: useEffect triggered, calling loadAll");
-	// 	loadAll();
-	// }, [loadAll]);
 
 	return useMemo(
 		() => ({ tracks, loading, error, loadAll, loadingProgress }),
