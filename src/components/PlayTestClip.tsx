@@ -48,7 +48,7 @@ interface UserProfile {
 }
 
 export function GuessifyGame() {
-	const { initPlayer, connect, playSnippet, pause, seek, isSdkAvailable, onSnippetStart, onSnippetEnd, onStateChange } = usePlayer() as any;
+	const { initPlayer, connect, playSnippet, pause, seek, isSdkAvailable, onSnippetStart, onSnippetEnd, onStateChange, clearReplayCache } = usePlayer() as any;
 	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(50);
 	const [gameState, setGameState] = useState<GameState>("waiting");
 	const [currentRound, setCurrentRound] = useState<RoundData | null>(null);
@@ -418,6 +418,7 @@ export function GuessifyGame() {
 		// Clear any existing timeout and reset state
 		// clearPlaybackTimeout(); // No longer needed as provider handles timeouts
 		clearHardCapTimeout();
+		clearReplayCache(); // Clear replay cache for new round
 		stopProgress();
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
@@ -706,6 +707,9 @@ export function GuessifyGame() {
 			// CRITICAL FIX: Reset snippet position for new level
 			currentSnippetPositionRef.current = 0; // Reset for new level
 			hasPlayedRef.current = false; // Reset play state
+			
+			// CRITICAL FIX: Clear replay cache for new level
+			clearReplayCache();
 			
 			// CRITICAL FIX: Update the current level reference to the new level
 			currentLevelRef.current = nextLevel;
