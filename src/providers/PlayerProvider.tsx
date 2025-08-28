@@ -285,14 +285,26 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			// Get token
 			const tokenRes = await fetch("/api/auth/token");
 			if (!tokenRes.ok) {
-				throw new Error(`Token fetch failed: ${tokenRes.status}`);
+				const errorText = await tokenRes.text();
+				console.error("🎵 Token fetch failed:", { status: tokenRes.status, error: errorText });
+				throw new Error(`Token fetch failed: ${tokenRes.status} - ${errorText}`);
 			}
-			const { access_token } = await tokenRes.json();
+			
+			const tokenData = await tokenRes.json();
+			console.log("🎵 Token response:", { 
+				hasAccessToken: !!tokenData.access_token, 
+				tokenLength: tokenData.access_token?.length,
+				responseKeys: Object.keys(tokenData)
+			});
+			
+			if (!tokenData.access_token) {
+				throw new Error("No access token in response");
+			}
 			
 			// Create player
 			playerRef.current = new window.Spotify.Player({
 				name: "Guessify Player",
-				getOAuthToken: (cb) => cb(access_token),
+				getOAuthToken: (cb) => cb(tokenData.access_token),
 				volume: 0.8
 			});
 			
@@ -308,6 +320,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 			
 			playerRef.current.addListener("player_state_changed", (state: any) => {
 				console.log("🎵 Player state changed:", state);
+			});
+			
+			// Add error listeners for debugging
+			playerRef.current.addListener("initialization_error", (error: any) => {
+				console.error("🎵 Player initialization error:", error);
+			});
+			
+			playerRef.current.addListener("authentication_error", (error: any) => {
+				console.error("🎵 Player authentication error:", error);
+			});
+			
+			playerRef.current.addListener("account_error", (error: any) => {
+				console.error("🎵 Player account error:", error);
+			});
+			
+			playerRef.current.addListener("playback_error", (error: any) => {
+				console.error("🎵 Player playback error:", error);
 			});
 			
 			// Connect

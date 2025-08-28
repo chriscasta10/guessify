@@ -10,7 +10,7 @@ export async function GET() {
 	const exp = expStr ? Number(expStr) : 0;
 
 	if (access && Date.now() < exp) {
-		return NextResponse.json({ accessToken: access });
+		return NextResponse.json({ access_token: access });
 	}
 
 	if (!refresh) return NextResponse.json({ error: "no_refresh" }, { status: 401 });
