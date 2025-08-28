@@ -895,19 +895,19 @@ export function GuessifyGame() {
 
 	// Subscribe to provider snippet events to drive the time bar
 	useEffect(() => {
-		const starts: Array<(d: number) => void> = [];
-		const ends: Array<() => void> = [];
 		onSnippetStart((d: number) => {
+			isPlayingRef.current = true;
+			if (gameState !== "playing") setGameState("playing");
 			startProgress(d);
 		});
 		onSnippetEnd(() => {
+			isPlayingRef.current = false;
 			// Clamp at end but keep bar rendered until next start
 			setProgressMs(progressTotalRef.current);
+			setGameState("guessing");
 		});
-		return () => {
-			// no-op (provider keeps listeners)
-		};
-	}, [onSnippetStart, onSnippetEnd]);
+		// no explicit cleanup as provider holds listeners
+	}, [onSnippetStart, onSnippetEnd, gameState]);
 
 	return (
 		<div className="min-h-screen w-full bg-transparent text-white relative overflow-hidden">
@@ -1178,7 +1178,15 @@ export function GuessifyGame() {
 									Submit Guess
 								</button>
 								<button
-									onClick={playCurrentLevel}
+									onClick={() => {
+										const lvl = getCurrentLevel();
+										if (lvl) {
+											// Pass level to override any playing guard and replay same duration
+											void (async () => {
+												await playCurrentLevelWithLevel(lvl);
+											})();
+										}
+									}}
 									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
 								>
 									🔁 Replay

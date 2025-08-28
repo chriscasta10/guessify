@@ -320,7 +320,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	};
 
 	const playSnippet = useCallback(async (uri: string, startMs: number, durationMs: number) => {
-		const requestId = ++playRequestIdRef.current;
+		// Cancel any in-flight snippet and bump requestId
+		cancelSnippetTimers();
+		playRequestIdRef.current++;
+		const requestId = playRequestIdRef.current;
+		try { await pause(); } catch {}
 		await seek(startMs);
 		await play(uri, startMs);
 		
