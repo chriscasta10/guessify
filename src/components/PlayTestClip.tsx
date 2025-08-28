@@ -83,6 +83,7 @@ export function GuessifyGame() {
 	} | null>(null);
 	const [buttonAnimation, setButtonAnimation] = useState<string>("");
 	const [hasStartedGame, setHasStartedGame] = useState(false); // Track if game has started
+	const [isPreloading, setIsPreloading] = useState(false); // Track audio preloading
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const isPlayingRef = useRef(false);
 	const hasPlayedRef = useRef(false);
@@ -192,20 +193,35 @@ export function GuessifyGame() {
 		};
 	}, [clearPlaybackTimeout]);
 
-	const startNewGame = useCallback(() => {
-		// Reset for new game - CRITICAL FIX: Reset current score and streak
-		setGameStats(prev => ({
-			...prev,
-			currentScore: 0,
-			currentStreak: 0,
-		}));
-		setCurrentRound(null);
-		setSelectedSearchResult(null);
-		setEndScreenData(null);
-		setGameState("waiting");
-		setButtonAnimation("");
-		setHasStartedGame(false); // Reset game start state
-		setDebugInfo("New game started! Click 'Start Round' to begin.");
+	// CRITICAL FIX: Preload audio for current track to eliminate delays
+	const preloadAudio = useCallback(async (track: any) => {
+		if (!track.previewUrl) return;
+		
+		setIsPreloading(true);
+		setAudioDebug("Preloading audio for instant playback...");
+		
+		try {
+			// Create new audio element for preloading
+			const preloadAudio = new Audio(track.previewUrl);
+			preloadAudio.preload = 'auto';
+			
+			// Wait for audio to be ready
+			await new Promise((resolve, reject) => {
+				preloadAudio.oncanplaythrough = resolve;
+				preloadAudio.onerror = reject;
+				// Timeout after 5 seconds
+				setTimeout(() => reject(new Error('Preload timeout')), 5000);
+			});
+			
+			// Store preloaded audio
+			audioRef.current = preloadAudio;
+			setAudioDebug("Audio preloaded successfully!");
+		} catch (error) {
+			console.error('Audio preload failed:', error);
+			setAudioDebug("Preload failed, will load on-demand");
+		} finally {
+			setIsPreloading(false);
+		}
 	}, []);
 
 	const startNewRound = useCallback(async () => {
@@ -222,12 +238,15 @@ export function GuessifyGame() {
 		hasPlayedRef.current = false;
 		currentSnippetPositionRef.current = 0; // Reset snippet position
 
-		// CRITICAL FIX: Reset current score and streak to 0 when starting new round
-		setGameStats(prev => ({
-			...prev,
-			currentScore: 0,
-			currentStreak: 0,
-		}));
+		// CRITICAL FIX: Only reset current score/streak if this is a completely new game
+		// If continuing from a correct guess, keep the accumulated score/streak
+		if (!hasStartedGame) {
+			setGameStats(prev => ({
+				...prev,
+				currentScore: 0,
+				currentStreak: 0,
+			}));
+		}
 
 		// Load tracks on-demand if we don't have any
 		if (tracks.length === 0) {
@@ -265,7 +284,12 @@ export function GuessifyGame() {
 		setGameState("waiting");
 		setHasStartedGame(true); // Mark that game has started
 		setDebugInfo("New round started! Click 'Play' to begin.");
-	}, [tracks, loading, error, loadAll, clearPlaybackTimeout]);
+		
+		// CRITICAL FIX: Preload audio for instant playback
+		if (track.previewUrl) {
+			void preloadAudio(track);
+		}
+	}, [tracks, loading, error, loadAll, clearPlaybackTimeout, hasStartedGame, preloadAudio]);
 
 	const playCurrentLevel = useCallback(async () => {
 		if (!currentRound) return;
@@ -369,11 +393,12 @@ export function GuessifyGame() {
 			// Fallback to preview URL if SDK failed or not available
 			if (track.previewUrl) {
 				console.log("Using preview URL fallback");
-				setAudioDebug("Using preview URL: " + track.previewUrl);
+				setAudioDebug("Using preloaded audio for instant playback");
 				
+				// Use preloaded audio if available
 				if (!audioRef.current) {
 					audioRef.current = new Audio(track.previewUrl);
-					console.log("Created new Audio element");
+					console.log("Created new Audio element (fallback)");
 				}
 				
 				// Reset audio and set position
@@ -406,7 +431,7 @@ export function GuessifyGame() {
 				
 				// Play the audio
 				try {
-					setAudioDebug("Attempting to play preview audio...");
+					setAudioDebug("Playing preloaded audio...");
 					await audioRef.current.play();
 					console.log("Preview audio play() called, waiting for onplay event...");
 					// Don't set timeout here - wait for onplay event
@@ -430,7 +455,7 @@ export function GuessifyGame() {
 			setGameState("waiting");
 			isPlayingRef.current = false;
 		}
-	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout]);
+	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio]);
 
 	const nextLevel = useCallback(() => {
 		if (!currentRound) return;
@@ -527,6 +552,22 @@ export function GuessifyGame() {
 		setSelectedSearchResult(result);
 	}, []);
 
+	const startNewGame = useCallback(() => {
+		// Reset for new game - CRITICAL FIX: Reset current score and streak
+		setGameStats(prev => ({
+			...prev,
+			currentScore: 0,
+			currentStreak: 0,
+		}));
+		setCurrentRound(null);
+		setSelectedSearchResult(null);
+		setEndScreenData(null);
+		setGameState("waiting");
+		setButtonAnimation("");
+		setHasStartedGame(false); // Reset game start state
+		setDebugInfo("New game started! Click 'Start Round' to begin.");
+	}, []);
+
 	const formatTime = (ms: number) => {
 		if (ms < 1000) return `${ms}ms`;
 		return `${(ms / 1000).toFixed(1)}s`;
@@ -546,10 +587,34 @@ export function GuessifyGame() {
 	};
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-white">
+		<div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-white relative overflow-hidden">
+			{/* Background Design Elements - Left Side */}
+			<div className="absolute left-0 top-0 w-1/4 h-full">
+				<div className="absolute left-8 top-20 w-32 h-32 bg-gradient-to-br from-green-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-16 top-60 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-4 top-96 w-20 h-20 bg-gradient-to-br from-purple-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-20 top-[500px] w-16 h-16 bg-gradient-to-br from-yellow-500/10 to-transparent rounded-full blur-3xl"></div>
+			</div>
+
+			{/* Background Design Elements - Right Side */}
+			<div className="absolute right-0 top-0 w-1/4 h-full">
+				<div className="absolute right-8 top-32 w-28 h-28 bg-gradient-to-bl from-green-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-16 top-80 w-20 h-20 bg-gradient-to-bl from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-4 top-[400px] w-24 h-24 bg-gradient-to-bl from-purple-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-20 top-[600px] w-18 h-18 bg-gradient-to-bl from-yellow-500/10 to-transparent rounded-full blur-3xl"></div>
+			</div>
+
+			{/* Floating Music Notes */}
+			<div className="absolute inset-0 pointer-events-none">
+				<div className="absolute left-1/4 top-1/4 text-4xl text-green-500/20 animate-bounce">♪</div>
+				<div className="absolute right-1/3 top-1/3 text-3xl text-blue-500/20 animate-pulse">♫</div>
+				<div className="absolute left-1/3 bottom-1/4 text-2xl text-purple-500/20 animate-bounce">♩</div>
+				<div className="absolute right-1/4 bottom-1/3 text-3xl text-yellow-500/20 animate-pulse">♪</div>
+			</div>
+
 			{/* User Profile Header */}
 			{userProfile && (
-				<div className="absolute top-4 right-4 flex items-center space-x-3 bg-black/50 backdrop-blur-sm rounded-full px-4 py-2">
+				<div className="absolute top-4 right-4 flex items-center space-x-3 bg-black/50 backdrop-blur-sm rounded-full px-4 py-2 z-10">
 					<img 
 						src={userProfile.images[0]?.url || '/default-avatar.png'} 
 						alt={userProfile.display_name}
@@ -559,7 +624,7 @@ export function GuessifyGame() {
 				</div>
 			)}
 
-			<div className="container mx-auto px-4 py-8 max-w-4xl">
+			<div className="container mx-auto px-4 py-8 max-w-4xl relative z-10">
 				{/* Game Header */}
 				<div className="text-center mb-8">
 					<h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent mb-4">
@@ -643,8 +708,9 @@ export function GuessifyGame() {
 								<button 
 									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
 									onClick={playCurrentLevel}
+									disabled={isPreloading}
 								>
-									Play
+									{isPreloading ? 'Preloading...' : 'Play'}
 								</button>
 							</div>
 						)}
@@ -780,8 +846,12 @@ export function GuessifyGame() {
 							</div>
 							
 							<div className="text-gray-300">
-								Final Score: <span className="text-white font-semibold">{endScreenData.finalScore}</span> | 
-								Final Streak: <span className="text-white font-semibold">{endScreenData.finalStreak}</span>
+								{/* CRITICAL FIX: Say "Current" for correct guesses, "Final" for game over */}
+								{endScreenData.wasCorrect ? (
+									<>Current Score: <span className="text-white font-semibold">{endScreenData.finalScore}</span> | Current Streak: <span className="text-white font-semibold">{endScreenData.finalStreak}</span></>
+								) : (
+									<>Final Score: <span className="text-white font-semibold">{endScreenData.finalScore}</span> | Final Streak: <span className="text-white font-semibold">{endScreenData.finalStreak}</span></>
+								)}
 							</div>
 						</div>
 						
