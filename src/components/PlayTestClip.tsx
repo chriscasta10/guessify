@@ -1216,32 +1216,23 @@ export function GuessifyGame() {
 				)}
 
 				{/* Progress Bar - Always visible when playing */}
-				{isPlayingRef.current && progressTotalRef.current > 0 && (
-					<div className="text-center space-y-4 max-w-2xl mx-auto w-full">
-						<div className="text-lg text-gray-300">
-							🎵 Playing {getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
-						</div>
-						<div className="mx-auto max-w-xl">
-							<div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-								<div className="h-2 bg-gradient-to-r from-emerald-400 to-sky-400" style={{ width: `${Math.min(100, (progressMs / (progressTotalRef.current || 1)) * 100)}%` }}></div>
-							</div>
-							<div className="mt-2 text-sm text-gray-300">{((progressTotalRef.current - progressMs) / 1000).toFixed(2)}s remaining</div>
-						</div>
-					</div>
-				)}
+				{/* REMOVED: Duplicate progress bar - now integrated with guessing interface */}
 
 				{/* Game State Display - REMOVED - no more separate playing screen */}
 				{/* The buttons below will always be visible */}
 
-				{/* Guess Input */}
-				{gameState === "guessing" && currentRound && (
+				{/* Guess Input - Now visible during both playing and guessing states */}
+				{(gameState === "guessing" || isPlayingRef.current) && currentRound && (
 					<div className="space-y-6">
 						<div className="text-center">
-							<div className="text-2xl font-semibold text-white mb-1">🎯 What song was that?</div>
+							<div className="text-2xl font-semibold text-white mb-1">
+								{isPlayingRef.current ? "🎵 Listen and prepare your guess..." : "🎯 What song was that?"}
+							</div>
 							<div className="text-lg text-gray-300 mb-2">
 								{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
 							</div>
-							{progressTotalRef.current > 0 && (
+							{/* Progress bar - now always visible when playing */}
+							{isPlayingRef.current && progressTotalRef.current > 0 && (
 								<div className="mx-auto max-w-xl">
 									<div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
 										<div className="h-2 bg-gradient-to-r from-emerald-400 to-sky-400" style={{ width: `${Math.min(100, (progressMs / (progressTotalRef.current || 1)) * 100)}%` }}></div>
@@ -1272,7 +1263,7 @@ export function GuessifyGame() {
 									disabled={!selectedSearchResult}
 									className={`bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-600 disabled:to-gray-700 text-white px-6 py-3 rounded-xl font-semibold h-14 w-full shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105 ${buttonAnimation === "correct" ? "animate-pulse bg-green-500" : ""} ${buttonAnimation === "incorrect" ? "animate-pulse bg-red-500" : ""}`}
 								>
-									Submit Guess
+									{isPlayingRef.current ? "🎯 Submit Guess (Ready)" : "Submit Guess"}
 								</button>
 								<button
 									onClick={() => {
@@ -1306,6 +1297,11 @@ export function GuessifyGame() {
 						
 						<div className="text-center text-gray-400">
 							Attempts: {currentRound.attempts + 1} | Level: {getCurrentLevel()?.name} ({formatTime(getCurrentLevel()?.duration || 0)})
+							{isPlayingRef.current && (
+								<div className="mt-2 text-sm text-emerald-400">
+									💡 Tip: You can search and select your guess while the snippet is playing!
+								</div>
+							)}
 						</div>
 					</div>
 				)}
