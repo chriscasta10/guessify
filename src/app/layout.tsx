@@ -24,9 +24,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gradient-to-br from-black via-gray-900 to-black`}
-      >
+    <html lang="en" className="min-h-full bg-gradient-to-br from-black via-gray-900 to-black">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-transparent`}>
         <PlayerProvider>{children}</PlayerProvider>
       </body>
     </html>

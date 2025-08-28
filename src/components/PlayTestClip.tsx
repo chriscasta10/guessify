@@ -92,18 +92,69 @@ export function GuessifyGame() {
 	// CRITICAL FIX: Store the exact snippet position for replay
 	const currentSnippetPositionRef = useRef<number>(0);
 
-	// Celebration jingle for correct answers
-	const celebrationRef = useRef<HTMLAudioElement | null>(null);
+	// Celebration SFX
+	const correctSfxRef = useRef<HTMLAudioElement | null>(null);
+	const correctExtremeSfxRef = useRef<HTMLAudioElement | null>(null);
+	const wrongSfxRef = useRef<HTMLAudioElement | null>(null);
 
 	useEffect(() => {
-		// Preload celebration sound
+		// Preload SFX
 		if (typeof window === 'undefined') return;
 		try {
-			celebrationRef.current = new Audio('/celebrate.mp3');
-			celebrationRef.current.preload = 'auto';
-			celebrationRef.current.volume = 0.6;
+			correctSfxRef.current = new Audio('/sfx/correct.mp3');
+			correctSfxRef.current.preload = 'auto';
+			correctSfxRef.current.volume = 0.6;
+			correctExtremeSfxRef.current = new Audio('/sfx/correct-extreme.mp3');
+			correctExtremeSfxRef.current.preload = 'auto';
+			correctExtremeSfxRef.current.volume = 0.65;
+			wrongSfxRef.current = new Audio('/sfx/wrong.mp3');
+			wrongSfxRef.current.preload = 'auto';
+			wrongSfxRef.current.volume = 0.6;
 		} catch {}
 	}, []);
+
+	const playSfx = (ref: React.MutableRefObject<HTMLAudioElement | null>) => {
+		try {
+			const el = ref.current;
+			if (!el) return;
+			el.currentTime = 0;
+			void el.play().catch(() => {});
+		} catch {}
+	};
+
+	const triggerConfetti = () => {
+		// Lightweight DOM confetti
+		const container = document.createElement('div');
+		container.style.position = 'fixed';
+		container.style.left = '0';
+		container.style.top = '0';
+		container.style.width = '100%';
+		container.style.height = '100%';
+		container.style.pointerEvents = 'none';
+		container.style.zIndex = '1000';
+		document.body.appendChild(container);
+		const colors = ['#34d399','#60a5fa','#a78bfa','#fbbf24','#ef4444'];
+		const pieces = 80;
+		for (let i = 0; i < pieces; i++) {
+			const piece = document.createElement('div');
+			piece.style.position = 'absolute';
+			piece.style.width = '8px';
+			piece.style.height = '12px';
+			piece.style.background = colors[i % colors.length];
+			piece.style.left = Math.random()*100 + '%';
+			piece.style.top = '-20px';
+			piece.style.opacity = '0.9';
+			piece.style.transform = `rotate(${Math.random()*360}deg)`;
+			const fall = 700 + Math.random()*700;
+			const drift = (Math.random()*2-1)*200;
+			piece.animate([
+				{ transform: 'translate(0,0) rotate(0deg)', top: '-20px' },
+				{ transform: `translate(${drift}px, 100vh) rotate(${Math.random()*720}deg)`, top: '100vh' }
+			], { duration: fall, easing: 'cubic-bezier(0.2, 0.6, 0.2, 1)', fill: 'forwards' });
+			container.appendChild(piece);
+		}
+		setTimeout(() => { try { document.body.removeChild(container); } catch {} }, 1200);
+	};
 
 	// Load user profile from Spotify
 	const loadUserProfile = useCallback(async () => {
@@ -753,14 +804,13 @@ export function GuessifyGame() {
 			const currentLevel = GAME_LEVELS[currentRound.currentLevelIndex];
 			const pointsEarned = currentLevel.points;
 			
-			// Play celebration jingle (non-blocking)
-			try {
-				const sfx = celebrationRef.current;
-				if (sfx) {
-					sfx.currentTime = 0;
-					void sfx.play().catch(() => {});
-				}
-			} catch {}
+			// Play SFX + confetti (Extreme only)
+			if (currentLevel.name === 'Extreme') {
+				playSfx(correctExtremeSfxRef);
+				triggerConfetti();
+			} else {
+				playSfx(correctSfxRef);
+			}
 			
 			// Update stats
 			setGameStats(prev => {
@@ -794,6 +844,7 @@ export function GuessifyGame() {
 			setGameState("gameOver");
 		} else {
 			// Wrong guess - end run immediately
+			playSfx(wrongSfxRef);
 			setButtonAnimation("incorrect");
 			setEndScreenData({
 				finalScore: gameStats.currentScore,
