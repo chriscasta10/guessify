@@ -742,7 +742,7 @@ export function GuessifyGame() {
 			setGameState("waiting");
 			isPlayingRef.current = false;
 		}
-	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio, gameState, stopProgress, startProgress]);
+	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio, gameState]);
 
 	// CRITICAL FIX: Use the new function that handles level parameters properly
 	const playCurrentLevel = useCallback(async () => {
