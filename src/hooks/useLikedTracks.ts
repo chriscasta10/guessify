@@ -23,6 +23,7 @@ type SpotifySavedTracksResponse = {
 const TRACKS_CACHE_KEY = 'guessify-tracks';
 const TRACKS_CACHE_VERSION_KEY = 'guessify-tracks-version';
 const TRACKS_CACHE_VERSION = '2'; // bump when shape changes
+const MAX_CACHE_ITEMS = 1000; // Avoid exceeding localStorage quota on very large libraries
 
 export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	const [tracks, setTracks] = useState<LikedTrack[]>(() => {
@@ -57,8 +58,19 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	// Save tracks to localStorage whenever they change
 	useEffect(() => {
 		if (typeof window !== 'undefined' && tracks.length > 0) {
-			localStorage.setItem(TRACKS_CACHE_KEY, JSON.stringify(tracks));
-			localStorage.setItem(TRACKS_CACHE_VERSION_KEY, TRACKS_CACHE_VERSION);
+			try {
+				if (tracks.length <= MAX_CACHE_ITEMS) {
+					localStorage.setItem(TRACKS_CACHE_KEY, JSON.stringify(tracks));
+					localStorage.setItem(TRACKS_CACHE_VERSION_KEY, TRACKS_CACHE_VERSION);
+				} else {
+					console.log(`useLikedTracks: skipping cache write (${tracks.length} items exceeds ${MAX_CACHE_ITEMS})`);
+					// Ensure we don't hold a huge stale payload in storage
+					localStorage.removeItem(TRACKS_CACHE_KEY);
+				}
+			} catch (e) {
+				console.error('useLikedTracks: failed to write cache, disabling cache to avoid crashes:', e);
+				try { localStorage.removeItem(TRACKS_CACHE_KEY); } catch {}
+			}
 		}
 	}, [tracks]);
 
