@@ -84,19 +84,13 @@ export function GuessifyGame() {
 	const [buttonAnimation, setButtonAnimation] = useState<string>("");
 	const [hasStartedGame, setHasStartedGame] = useState(false); // Track if game has started
 	const [isPreloading, setIsPreloading] = useState(false); // Track audio preloading
+	const [fetchedArtistImages, setFetchedArtistImages] = useState<Record<string, string>>({}); // Store fetched artist images
 	const audioRef = useRef<HTMLAudioElement | null>(null);
 	const isPlayingRef = useRef(false);
 	const hasPlayedRef = useRef(false);
 	const currentLevelRef = useRef<GameLevel | null>(null);
 	// CRITICAL FIX: Store the exact snippet position for replay
 	const currentSnippetPositionRef = useRef<number>(0);
-
-	useEffect(() => {
-		console.log("PlayTestClip: useEffect triggered");
-		void initPlayer();
-		// Load user profile
-		void loadUserProfile();
-	}, [initPlayer]);
 
 	// Load user profile from Spotify
 	const loadUserProfile = useCallback(async () => {
@@ -110,6 +104,62 @@ export function GuessifyGame() {
 			console.error('Failed to load user profile:', error);
 		}
 	}, []);
+
+	// CRITICAL FIX: Pre-initialize Spotify SDK when user first visits
+	const preInitializeSpotify = useCallback(async () => {
+		if (!isSdkAvailable) return;
+		
+		console.log("🚀 Pre-initializing Spotify SDK for faster first play...");
+		setAudioDebug("Pre-initializing Spotify SDK...");
+		
+		try {
+			// Connect to SDK in background
+			await connect();
+			setAudioDebug("Spotify SDK pre-initialized successfully!");
+			console.log("✅ Spotify SDK pre-initialized");
+		} catch (error) {
+			console.log("⚠️ Spotify SDK pre-initialization failed (this is okay):", error);
+			setAudioDebug("Pre-initialization failed (will initialize on first play)");
+		}
+	}, [isSdkAvailable, connect]);
+
+	// CRITICAL FIX: Fetch artist image when album data is missing
+	const fetchArtistImage = useCallback(async (artistName: string) => {
+		try {
+			console.log("🎨 Fetching artist image for:", artistName);
+			
+			// Search for the artist to get their image
+			const response = await fetch(`/api/spotify-search?q=${encodeURIComponent(artistName)}&type=artist&limit=1`);
+			if (response.ok) {
+				const data = await response.json();
+				const artists = data.artists?.items;
+				
+				if (artists && artists.length > 0 && artists[0].images && artists[0].images.length > 0) {
+					const imageUrl = artists[0].images[0].url;
+					console.log("✅ Found artist image:", imageUrl);
+					return imageUrl;
+				}
+			}
+			
+			console.log("⚠️ No artist image found for:", artistName);
+			return null;
+		} catch (error) {
+			console.error("❌ Error fetching artist image:", error);
+			return null;
+		}
+	}, []);
+
+	useEffect(() => {
+		console.log("PlayTestClip: useEffect triggered");
+		void initPlayer();
+		// Load user profile
+		void loadUserProfile();
+		
+		// CRITICAL FIX: Pre-initialize Spotify SDK after a short delay
+		setTimeout(() => {
+			void preInitializeSpotify();
+		}, 2000); // Wait 2 seconds after component mounts
+	}, [initPlayer, preInitializeSpotify]);
 
 	// Listen for player state changes to start timeout when SDK playback begins
 	useEffect(() => {
@@ -372,30 +422,61 @@ export function GuessifyGame() {
 					setDebugInfo("Failed to connect to Spotify SDK, trying preview URL fallback");
 					setAudioDebug("SDK connection failed, falling back to preview");
 				} else {
-					setAudioDebug("SDK connected successfully! Waiting for device ID...");
+					setAudioDebug("SDK connected successfully! Waiting for device ID to be fully ready...");
 					console.log("SDK connected, waiting for device ID to be fully ready...");
 					
-					// CRITICAL FIX: Wait longer for device ID to be fully available
+					// CRITICAL FIX: Wait for device ID to be fully available and stable
 					// This should eliminate the double-click requirement
-					await new Promise(resolve => setTimeout(resolve, 1000));
+					let deviceIdReady = false;
+					let attempts = 0;
+					const maxAttempts = 20; // Wait up to 10 seconds
 					
-					try {
-						await seek(snippetPosition);
-						setAudioDebug("Seek successful, now playing...");
-						await play(track.uri, snippetPosition);
+					while (!deviceIdReady && attempts < maxAttempts) {
+						await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms between checks
+						attempts++;
 						
-						setAudioDebug(`SDK play() called, waiting for playback to actually start...`);
-						console.log(`SDK playback initiated, waiting for player_state_changed event`);
-						
-						// CRITICAL FIX: Don't set timeout immediately - wait for playback to actually start
-						// The SDK will fire player_state_changed when playback begins
-						// We'll handle the timeout in the PlayerProvider's event listener
-						
-						return; // Success - PlayerProvider will handle the timeout
-					} catch (playError) {
-						console.error("Error during SDK playback:", playError);
-						setAudioDebug("SDK playback error: " + (playError instanceof Error ? playError.message : 'Unknown'));
+						// Check if device ID is available in PlayerProvider
+						try {
+							// Try to get a simple response to check if device ID is ready
+							const response = await fetch('/api/player/play', {
+								method: 'PUT',
+								headers: { 'Content-Type': 'application/json' },
+								body: JSON.stringify({ uri: track.uri, position_ms: snippetPosition })
+							});
+							
+							if (response.ok) {
+								deviceIdReady = true;
+								console.log(`Device ID ready after ${attempts * 500}ms`);
+								setAudioDebug(`Device ID ready after ${attempts * 500}ms`);
+							}
+						} catch (e) {
+							console.log(`Device ID check attempt ${attempts}:`, e);
+						}
+					}
+					
+					if (!deviceIdReady) {
+						console.error("Device ID never became ready, falling back to preview URL");
+						setAudioDebug("Device ID timeout, falling back to preview URL");
 						// Fall through to preview URL
+					} else {
+						try {
+							await seek(snippetPosition);
+							setAudioDebug("Seek successful, now playing...");
+							await play(track.uri, snippetPosition);
+							
+							setAudioDebug(`SDK play() called, waiting for playback to actually start...`);
+							console.log(`SDK playback initiated, waiting for player_state_changed event`);
+							
+							// CRITICAL FIX: Don't set timeout immediately - wait for playback to actually start
+							// The SDK will fire player_state_changed when playback begins
+							// We'll handle the timeout in the PlayerProvider's event listener
+							
+							return; // Success - PlayerProvider will handle the timeout
+						} catch (playError) {
+							console.error("Error during SDK playback:", playError);
+							setAudioDebug("SDK playback error: " + (playError instanceof Error ? playError.message : 'Unknown'));
+							// Fall through to preview URL
+						}
 					}
 				}
 			}
@@ -900,16 +981,19 @@ export function GuessifyGame() {
 										const track = endScreenData.track;
 										const albumImages = track.album?.images;
 										const firstImageUrl = albumImages?.[0]?.url;
+										const artistName = track.artist;
 										
 										console.log("🎨 Artist Picture Debug:", {
 											trackName: track.name,
-											artistName: track.artist,
+											artistName: artistName,
 											hasAlbum: !!track.album,
 											albumImages: albumImages,
 											firstImageUrl: firstImageUrl,
-											imageCount: albumImages?.length || 0
+											imageCount: albumImages?.length || 0,
+											fetchedImage: fetchedArtistImages[artistName]
 										});
 										
+										// Try album image first, then fetched artist image, then fallback
 										if (firstImageUrl) {
 											return (
 												<img 
@@ -917,29 +1001,58 @@ export function GuessifyGame() {
 													alt="Artist/Album Art"
 													className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl transform transition-all duration-500 hover:scale-110 object-cover"
 													onLoad={() => {
-														console.log("✅ Artist picture loaded successfully:", firstImageUrl);
-														setAudioDebug("Artist picture loaded successfully!");
+														console.log("✅ Album image loaded successfully:", firstImageUrl);
+														setAudioDebug("Album image loaded successfully!");
 													}}
 													onError={(e) => {
-														console.error("❌ Artist picture failed to load:", firstImageUrl, e);
-														setAudioDebug("Artist picture failed to load, showing fallback");
-														// Fallback to default if image fails to load
-														const target = e.target as HTMLImageElement;
-														target.style.display = 'none';
-														// Show fallback instead
-														const fallback = target.nextElementSibling as HTMLElement;
-														if (fallback) fallback.style.display = 'flex';
+														console.error("❌ Album image failed to load:", firstImageUrl, e);
+														setAudioDebug("Album image failed, trying artist image...");
+														// Try to fetch artist image as fallback
+														void fetchArtistImage(artistName);
+													}}
+												/>
+											);
+										} else if (fetchedArtistImages[artistName]) {
+											// Use fetched artist image
+											return (
+												<img 
+													src={fetchedArtistImages[artistName]} 
+													alt="Artist Image"
+													className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl transform transition-all duration-500 hover:scale-110 object-cover"
+													onLoad={() => {
+														console.log("✅ Fetched artist image loaded successfully:", fetchedArtistImages[artistName]);
+														setAudioDebug("Artist image loaded successfully!");
+													}}
+													onError={(e) => {
+														console.error("❌ Fetched artist image failed to load:", fetchedArtistImages[artistName], e);
+														setAudioDebug("Artist image failed, showing fallback");
 													}}
 												/>
 											);
 										} else {
+											// No images available - try to fetch artist image
 											console.log("⚠️ No album images available for track:", track.name);
+											console.log("🎨 Attempting to fetch artist image for:", artistName);
+											
+											// Fetch artist image in background
+											fetchArtistImage(artistName).then(imageUrl => {
+												if (imageUrl) {
+													setFetchedArtistImages(prev => ({
+														...prev,
+														[artistName]: imageUrl
+													}));
+													console.log("✅ Artist image fetched and stored:", imageUrl);
+												}
+											});
+											
 											return null;
 										}
 									})()}
 									
 									{/* Fallback for tracks without album images or failed loads */}
-									<div className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center" style={{ display: endScreenData.track.album?.images?.[0]?.url ? 'none' : 'flex' }}>
+									<div className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center" style={{ 
+										display: (endScreenData.track.album?.images?.[0]?.url || fetchedArtistImages[endScreenData.track.artist]) ? 'none' : 'flex' 
+									}}>
 										<span className="text-white text-4xl">🎵</span>
 									</div>
 									
@@ -983,6 +1096,8 @@ export function GuessifyGame() {
 									<div>Has Album: {endScreenData.track.album ? 'Yes' : 'No'}</div>
 									<div>Album Images: {endScreenData.track.album?.images?.length || 0}</div>
 									<div>First Image URL: {endScreenData.track.album?.images?.[0]?.url ? 'Available' : 'Missing'}</div>
+									<div>Fetched Artist Image: {fetchedArtistImages[endScreenData.track.artist] ? 'Available' : 'Missing'}</div>
+									<div>Image Source: {endScreenData.track.album?.images?.[0]?.url ? 'Album' : fetchedArtistImages[endScreenData.track.artist] ? 'Artist Search' : 'Fallback'}</div>
 								</div>
 							</div>
 						</div>
