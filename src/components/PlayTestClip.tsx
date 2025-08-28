@@ -328,7 +328,7 @@ export function GuessifyGame() {
 					isPlayingRef.current = false;
 					setGameState("guessing");
 					setAudioDebug("🚨 SDK TIMEOUT: Time's up - time to guess!");
-					
+					stopProgress();
 					// Force stop SDK playback
 					try {
 						pause();
@@ -336,6 +336,8 @@ export function GuessifyGame() {
 						console.log("SDK pause failed during timeout, but that's okay:", e);
 					}
 				});
+				// Kick off progress bar
+				startProgress(currentLevelRef.current.duration);
 				// Safety hard-cap: ensure complete stop even if state event lags
 				clearHardCapTimeout();
 				hardCapTimeoutRef.current = setTimeout(() => {
@@ -344,6 +346,7 @@ export function GuessifyGame() {
 					isPlayingRef.current = false;
 					try { pause(); } catch {}
 					if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+					stopProgress();
 					setGameState("guessing");
 				}, currentLevelRef.current.duration + 40);
 			} else {
@@ -363,7 +366,7 @@ export function GuessifyGame() {
 		return () => {
 			console.log("GuessifyGame: Cleaning up player state change listener");
 		};
-	}, [onStateChange, startPlaybackTimeout, pause, clearHardCapTimeout]);
+	}, [onStateChange, startPlaybackTimeout, pause, clearHardCapTimeout, stopProgress, startProgress]);
 
 	useEffect(() => {
 		console.log("PlayTestClip: tracks changed", { 
@@ -431,6 +434,7 @@ export function GuessifyGame() {
 		// Clear any existing timeout and reset state
 		clearPlaybackTimeout();
 		clearHardCapTimeout();
+		stopProgress();
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
 		currentSnippetPositionRef.current = 0; // Reset snippet position
@@ -691,13 +695,23 @@ export function GuessifyGame() {
 						} else {
 							console.log("🚨 Timeout triggered but game state is already:", gameState);
 						}
-						
+						stopProgress();
 						// Force stop preview audio
 						if (audioRef.current) {
 							audioRef.current.pause();
 							audioRef.current.currentTime = 0;
 						}
 					});
+					// Safety hard-cap for preview
+					clearHardCapTimeout();
+					hardCapTimeoutRef.current = setTimeout(() => {
+						if (!isPlayingRef.current) return;
+						console.log("⛔ Hard-cap (preview) enforcing exact duration");
+						isPlayingRef.current = false;
+						if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+						stopProgress();
+						setGameState("guessing");
+					}, currentLevel.duration + 40);
 				};
 				audioRef.current.onended = () => setAudioDebug("Audio ended");
 				audioRef.current.onerror = (e) => setAudioDebug("Audio error: " + e);
@@ -728,7 +742,7 @@ export function GuessifyGame() {
 			setGameState("waiting");
 			isPlayingRef.current = false;
 		}
-	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio, gameState]);
+	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio, gameState, stopProgress, startProgress]);
 
 	// CRITICAL FIX: Use the new function that handles level parameters properly
 	const playCurrentLevel = useCallback(async () => {
@@ -753,6 +767,7 @@ export function GuessifyGame() {
 				isPlayingRef.current = false;
 				try { pause(); } catch {}
 				if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+				stopProgress();
 			}
 			
 			// CRITICAL FIX: Update the round state FIRST
@@ -791,6 +806,7 @@ export function GuessifyGame() {
 		isPlayingRef.current = false;
 		currentSnippetPositionRef.current = 0;
 		currentLevelRef.current = null;
+		stopProgress();
 		try { pause(); } catch {}
 		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
@@ -881,6 +897,7 @@ export function GuessifyGame() {
 		isPlayingRef.current = false;
 		currentSnippetPositionRef.current = 0;
 		currentLevelRef.current = null;
+		stopProgress();
 		
 		// Play wrong SFX
 		playSfx(wrongSfxRef);
@@ -951,6 +968,30 @@ export function GuessifyGame() {
 
 	const getCurrentLevel = () => {
 		return currentRound ? GAME_LEVELS[currentRound.currentLevelIndex] : null;
+	};
+
+	const [progressMs, setProgressMs] = useState(0);
+	const progressTotalRef = useRef(0);
+	const progressStartRef = useRef<number | null>(null);
+	const rafRef = useRef<number | null>(null);
+	const stopProgress = () => {
+		if (rafRef.current) cancelAnimationFrame(rafRef.current);
+		rafRef.current = null;
+		progressStartRef.current = null;
+		setProgressMs(0);
+		progressTotalRef.current = 0;
+	};
+	const tickProgress = () => {
+		if (progressStartRef.current === null) return;
+		const elapsed = Date.now() - progressStartRef.current;
+		setProgressMs(Math.min(elapsed, progressTotalRef.current));
+		rafRef.current = requestAnimationFrame(tickProgress);
+	};
+	const startProgress = (durationMs: number) => {
+		stopProgress();
+		progressTotalRef.current = durationMs;
+		progressStartRef.current = Date.now();
+		rafRef.current = requestAnimationFrame(tickProgress);
 	};
 
 	return (
@@ -1163,6 +1204,7 @@ export function GuessifyGame() {
 									} catch (e) {
 										console.log("Manual SDK pause failed:", e);
 									}
+									stopProgress();
 								}
 							}}
 							className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-red-500/25 transition-all duration-300"
@@ -1393,6 +1435,21 @@ export function GuessifyGame() {
 				
 				{audioDebug && (
 					<></>
+				)}
+				
+				{/* Time Bar */}
+				{(gameState === 'playing' || gameState === 'guessing') && currentRound && progressTotalRef.current > 0 && (
+					<div className="mb-6">
+						<div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+							<div
+								className="h-2 bg-gradient-to-r from-emerald-400 to-sky-400"
+								style={{ width: `${Math.min(100, (progressMs / (progressTotalRef.current || 1)) * 100)}%` }}
+							></div>
+						</div>
+						<div className="mt-2 text-sm text-gray-300">
+							{((progressTotalRef.current - progressMs) / 1000).toFixed(2)}s remaining
+						</div>
+					</div>
 				)}
 				
 				<div className="text-xs text-gray-500 text-center mt-8">
