@@ -320,37 +320,124 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	};
 
 	const playSnippet = useCallback(async (uri: string, startMs: number, durationMs: number) => {
+		console.log("🎵 playSnippet called:", { uri, startMs, durationMs, requestId: playRequestIdRef.current + 1 });
+		
 		// Cancel any in-flight snippet and bump requestId
 		cancelSnippetTimers();
 		playRequestIdRef.current++;
 		const requestId = playRequestIdRef.current;
-		try { await pause(); } catch {}
+		
+		console.log("🎵 Starting snippet playback, requestId:", requestId);
+		
+		try { 
+			await pause(); 
+			console.log("🎵 Paused previous playback");
+		} catch (error) {
+			console.log("🎵 Pause error (non-critical):", error);
+		}
+		
 		await seek(startMs);
+		console.log("🎵 Seeked to position:", startMs);
+		
 		await play(uri, startMs);
+		console.log("🎵 Started play command");
+		
+		// Start the timer immediately with a fallback approach
+		const trueStart = performance.now() + 100; // small cross-device buffer
+		let retryCount = 0;
+		const maxRetries = 20; // 1 second max wait
+		
+		console.log("🎵 Timer will start at:", new Date(Date.now() + 100).toISOString());
 		
 		const confirmStart = async () => {
-			if (requestId !== playRequestIdRef.current) return; // canceled
-			const state = await playerRef.current?.getCurrentState?.();
-			if (state && !state.paused && state.position >= startMs + 30) {
-				// Fire start
-				snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
-				const trueStart = performance.now() + 75; // small cross-device buffer
-				const tick = async () => {
-					if (requestId !== playRequestIdRef.current) return; // canceled
-					const elapsed = performance.now() - trueStart;
-					if (elapsed >= durationMs - 40) {
-						await pause();
-						snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
-						cancelSnippetTimers();
-						return;
-					}
+			if (requestId !== playRequestIdRef.current) {
+				console.log("🎵 Request canceled, stopping confirmStart");
+				return;
+			}
+			
+			try {
+				const state = await playerRef.current?.getCurrentState?.();
+				console.log("🎵 Player state check:", { 
+					requestId, 
+					retryCount, 
+					hasState: !!state, 
+					isPaused: state?.paused, 
+					position: state?.position,
+					expectedMin: startMs + 30 
+				});
+				
+				if (state && !state.paused && state.position >= startMs + 30) {
+					// Player confirmed - fire start event
+					console.log("🎵 Player confirmed, starting timer");
+					snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
+					
+					const tick = async () => {
+						if (requestId !== playRequestIdRef.current) return; // canceled
+						const elapsed = performance.now() - trueStart;
+						if (elapsed >= durationMs - 40) {
+							console.log("🎵 Timer completed, pausing and firing end event");
+							await pause();
+							snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
+							cancelSnippetTimers();
+							return;
+						}
+						snippetRafRef.current = requestAnimationFrame(tick);
+					};
 					snippetRafRef.current = requestAnimationFrame(tick);
-				};
-				snippetRafRef.current = requestAnimationFrame(tick);
-			} else {
-				setTimeout(confirmStart, 50);
+				} else if (retryCount < maxRetries) {
+					// Retry with exponential backoff
+					retryCount++;
+					const delay = Math.min(50 * retryCount, 200);
+					console.log("🎵 Retrying confirmStart in", delay, "ms (attempt", retryCount, "/", maxRetries, ")");
+					setTimeout(confirmStart, delay);
+				} else {
+					// Fallback: start timer anyway after max retries
+					console.warn("🎵 Player state not confirmed after max retries, starting timer anyway");
+					snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
+					
+					const tick = async () => {
+						if (requestId !== playRequestIdRef.current) return; // canceled
+						const elapsed = performance.now() - trueStart;
+						if (elapsed >= durationMs - 40) {
+							console.log("🎵 Fallback timer completed, pausing and firing end event");
+							await pause();
+							snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
+							cancelSnippetTimers();
+							return;
+						}
+						snippetRafRef.current = requestAnimationFrame(tick);
+					};
+					snippetRafRef.current = requestAnimationFrame(tick);
+				}
+			} catch (error) {
+				console.error("🎵 Error in confirmStart:", error);
+				// Fallback: start timer anyway on error
+				if (retryCount < maxRetries) {
+					retryCount++;
+					const delay = Math.min(50 * retryCount, 200);
+					console.log("🎵 Retrying confirmStart after error in", delay, "ms (attempt", retryCount, "/", maxRetries, ")");
+					setTimeout(confirmStart, delay);
+				} else {
+					console.warn("🎵 Starting timer after error fallback");
+					snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
+					
+					const tick = async () => {
+						if (requestId !== playRequestIdRef.current) return; // canceled
+						const elapsed = performance.now() - trueStart;
+						if (elapsed >= durationMs - 40) {
+							console.log("🎵 Error fallback timer completed, pausing and firing end event");
+							await pause();
+							snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
+							cancelSnippetTimers();
+							return;
+						}
+						snippetRafRef.current = requestAnimationFrame(tick);
+					};
+					snippetRafRef.current = requestAnimationFrame(tick);
+				}
 			}
 		};
+		
 		confirmStart();
 	}, [pause, play, seek, clearPlaybackTimeout]);
 
