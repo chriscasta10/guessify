@@ -536,16 +536,18 @@ export function GuessifyGame() {
 		
 		// CRITICAL FIX: Use stored snippet position for replay, or generate new one
 		let snippetPosition: number;
-		if (hasPlayedRef.current && levelSnippetPositionsRef.current[currentRound.currentLevelIndex] && !specificLevel) {
+		const isReplay = hasPlayedRef.current && levelSnippetPositionsRef.current[currentRound.currentLevelIndex] && !specificLevel;
+		
+		if (isReplay) {
 			// Replay: use the exact same snippet position for this level
 			snippetPosition = levelSnippetPositionsRef.current[currentRound.currentLevelIndex];
-			console.log("🔄 Replaying exact same snippet at position:", snippetPosition, "for level", currentRound.currentLevelIndex);
+			console.log("🔄 REPLAY: Using exact same snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
 		} else {
 			// First play or level change: generate new random position
 			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
 			// Store this position for this specific level
 			levelSnippetPositionsRef.current[currentRound.currentLevelIndex] = snippetPosition;
-			console.log("🎯 New snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
+			console.log("🎯 NEW: Generated snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
 		}
 
 		// CRITICAL FIX: For "More Time" button, stay in guessing mode and just show playing message
@@ -1109,13 +1111,30 @@ export function GuessifyGame() {
 				{gameState === "waiting" && (
 					<div className="text-center space-y-6 max-w-2xl mx-auto w-full min-h-[360px]">
 						{!currentRound ? (
-							<button 
-								className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
-								onClick={startNewRound}
-								disabled={loading}
-							>
-								{loading ? 'Loading...' : 'Start Round'}
-							</button>
+							<div className="space-y-4">
+								<button 
+									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
+									onClick={startNewRound}
+									disabled={loading}
+								>
+									{loading ? 'Loading...' : 'Start Round'}
+								</button>
+								
+								{/* Show track count and refresh option */}
+								<div className="text-sm text-gray-400 space-y-2">
+									<div>{tracks.length > 0 ? `${tracks.length} tracks loaded` : 'No tracks available'}</div>
+									{tracks.length > 0 && (
+										<button 
+											onClick={() => {
+												void loadAll();
+											}}
+											className="text-blue-400 hover:text-blue-300 underline text-xs"
+										>
+											Refresh Track List
+										</button>
+									)}
+								</div>
+							</div>
 						) : (
 							<div className="space-y-4">
 								{/* CRITICAL FIX: Show level info above button */}
@@ -1127,9 +1146,9 @@ export function GuessifyGame() {
 								<button 
 									className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
 									onClick={playCurrentLevel}
-									disabled={isPreloading}
+									disabled={isPreloading || isPlayingRef.current}
 								>
-									{isPreloading ? 'Preloading...' : 'Play'}
+									{isPreloading ? 'Preloading...' : isPlayingRef.current ? 'Playing...' : 'Play'}
 								</button>
 							</div>
 						)}
@@ -1139,49 +1158,23 @@ export function GuessifyGame() {
 					</div>
 				)}
 
-				{/* Game State Display */}
-				{gameState === "playing" && currentRound && (
-					<div className="text-center space-y-6">
-						<div className="text-2xl font-semibold text-white mb-2">🎵 Playing...</div>
-						<div className="text-lg text-gray-300 mb-2">
-							{getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
+				{/* Progress Bar - Always visible when playing */}
+				{isPlayingRef.current && progressTotalRef.current > 0 && (
+					<div className="text-center space-y-4 max-w-2xl mx-auto w-full">
+						<div className="text-lg text-gray-300">
+							🎵 Playing {getCurrentLevel()?.name} Level - {formatTime(getCurrentLevel()?.duration || 0)} clip
 						</div>
-						{progressTotalRef.current > 0 && (
-							<div className="mx-auto max-w-xl">
-								<div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-									<div className="h-2 bg-gradient-to-r from-emerald-400 to-sky-400" style={{ width: `${Math.min(100, (progressMs / (progressTotalRef.current || 1)) * 100)}%` }}></div>
-								</div>
-								<div className="mt-2 text-sm text-gray-300">{((progressTotalRef.current - progressMs) / 1000).toFixed(2)}s remaining</div>
+						<div className="mx-auto max-w-xl">
+							<div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+								<div className="h-2 bg-gradient-to-r from-emerald-400 to-sky-400" style={{ width: `${Math.min(100, (progressMs / (progressTotalRef.current || 1)) * 100)}%` }}></div>
 							</div>
-						)}
-						<button
-							onClick={() => {
-								console.log("Manual stop button clicked");
-								if (isPlayingRef.current) {
-									// clearPlaybackTimeout(); // No longer needed as provider handles timeouts
-									clearHardCapTimeout();
-									isPlayingRef.current = false;
-									setGameState("guessing");
-									setAudioDebug("Manual stop - time to guess!");
-									stopProgress();
-									// Force stop audio
-									if (audioRef.current) {
-										audioRef.current.pause();
-										audioRef.current.currentTime = 0;
-									}
-									try {
-										pause();
-									} catch (e) {
-										console.log("Manual SDK pause failed:", e);
-									}
-								}
-							}}
-							className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-red-500/25 transition-all duration-300"
-						>
-							🛑 Force Stop
-						</button>
+							<div className="mt-2 text-sm text-gray-300">{((progressTotalRef.current - progressMs) / 1000).toFixed(2)}s remaining</div>
+						</div>
 					</div>
 				)}
+
+				{/* Game State Display - REMOVED - no more separate playing screen */}
+				{/* The buttons below will always be visible */}
 
 				{/* Guess Input */}
 				{gameState === "guessing" && currentRound && (
