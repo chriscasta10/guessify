@@ -92,6 +92,15 @@ export function GuessifyGame() {
 	// CRITICAL FIX: Store the exact snippet position for replay
 	const currentSnippetPositionRef = useRef<number>(0);
 
+	// Hard-cap timeout to guarantee exact stop time
+	const hardCapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const clearHardCapTimeout = useCallback(() => {
+		if (hardCapTimeoutRef.current) {
+			clearTimeout(hardCapTimeoutRef.current);
+			hardCapTimeoutRef.current = null;
+		}
+	}, []);
+
 	// Celebration SFX
 	const correctSfxRef = useRef<HTMLAudioElement | null>(null);
 	const correctExtremeSfxRef = useRef<HTMLAudioElement | null>(null);
@@ -354,7 +363,7 @@ export function GuessifyGame() {
 		return () => {
 			console.log("GuessifyGame: Cleaning up player state change listener");
 		};
-	}, [onStateChange, startPlaybackTimeout, pause]);
+	}, [onStateChange, startPlaybackTimeout, pause, clearHardCapTimeout]);
 
 	useEffect(() => {
 		console.log("PlayTestClip: tracks changed", { 
@@ -378,7 +387,7 @@ export function GuessifyGame() {
 			clearPlaybackTimeout();
 			clearHardCapTimeout();
 		};
-	}, [clearPlaybackTimeout]);
+	}, [clearPlaybackTimeout, clearHardCapTimeout]);
 
 	// CRITICAL FIX: Preload audio for current track to eliminate delays
 	const preloadAudio = useCallback(async (track: any) => {
