@@ -1301,9 +1301,7 @@ export function GuessifyGame() {
 				)}
 				
 				{audioDebug && (
-					<div className="text-sm text-blue-400 bg-blue-500/10 backdrop-blur-sm p-4 rounded-xl border border-blue-500/30 mt-4">
-						Audio Debug: {audioDebug}
-					</div>
+					<></>
 				)}
 				
 				<div className="text-xs text-gray-500 text-center mt-8">
