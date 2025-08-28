@@ -562,12 +562,10 @@ export function GuessifyGame() {
 		if (gameState === "guessing" || specificLevel) {
 			// This is a replay or level change - just show playing message, don't change state
 			console.log("🔄 Replay/level change - staying in current state:", gameState);
-			setDebugInfo(`Playing ${currentLevel.name} level clip...`);
 			setAudioDebug(`Playing ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
 		} else {
 			// This is first play - change to playing state
 			console.log("🎯 First play - changing gameState from", gameState, "to playing");
-			setDebugInfo(`Playing ${currentLevel.name} level clip...`);
 			setGameState("playing");
 			setAudioDebug(`Starting ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
 		}
@@ -1466,21 +1464,6 @@ export function GuessifyGame() {
 				
 				{audioDebug && (
 					<></>
-				)}
-				
-				{/* Time Bar */}
-				{(gameState === 'playing' || gameState === 'guessing') && currentRound && progressTotalRef.current > 0 && (
-					<div className="mb-6">
-						<div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-							<div
-								className="h-2 bg-gradient-to-r from-emerald-400 to-sky-400"
-								style={{ width: `${Math.min(100, (progressMs / (progressTotalRef.current || 1)) * 100)}%` }}
-							></div>
-						</div>
-						<div className="mt-2 text-sm text-gray-300">
-							{((progressTotalRef.current - progressMs) / 1000).toFixed(2)}s remaining
-						</div>
-					</div>
 				)}
 				
 				<div className="text-xs text-gray-500 text-center mt-8">
