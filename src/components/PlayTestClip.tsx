@@ -12,11 +12,10 @@ interface GameLevel {
 }
 
 const GAME_LEVELS: GameLevel[] = [
-	{ name: "Extreme", duration: 800, points: 1000 },   // 0.8s - more reasonable
-	{ name: "Hard", duration: 1500, points: 500 },      // 1.5s
-	{ name: "Medium", duration: 3000, points: 250 },    // 3.0s
-	{ name: "Easy", duration: 5000, points: 125 },      // 5.0s
-	{ name: "Chill", duration: 8000, points: 60 },      // 8.0s
+	{ name: "Extreme", duration: 1000, points: 1000 },   // 1.0s - more challenging
+	{ name: "Hard", duration: 2000, points: 500 },       // 2.0s
+	{ name: "Medium", duration: 5000, points: 250 },     // 5.0s
+	{ name: "Easy", duration: 10000, points: 125 },      // 10.0s
 ];
 
 type GameState = "waiting" | "playing" | "guessing" | "correct" | "gameOver";
@@ -544,7 +543,7 @@ export function GuessifyGame() {
 			console.log("🔄 REPLAY: Using exact same snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
 		} else {
 			// First play or level change: generate new random position
-			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
+			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 5000))));
 			// Store this position for this specific level
 			levelSnippetPositionsRef.current[currentRound.currentLevelIndex] = snippetPosition;
 			console.log("🎯 NEW: Generated snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
