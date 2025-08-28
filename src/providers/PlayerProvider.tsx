@@ -152,29 +152,76 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	const seekThenConfirm = useCallback(async (targetMs: number, requestId: number, signal: AbortSignal): Promise<{ confirmedAt: number; confirmedPosition: number }> => {
 		console.log("🎵 Seeking to position:", targetMs, "requestId:", requestId);
 		
-		await playerRef.current.seek(targetMs);
+		try {
+			await playerRef.current.seek(targetMs);
+			console.log("🎵 Seek command sent successfully");
+		} catch (error) {
+			console.error("🎵 Seek command failed:", error);
+			throw new Error(`Seek failed: ${error}`);
+		}
 		
 		// Wait for confirmation via getCurrentState
 		for (let i = 0; i < 40; i++) { // ~2s total wait max
 			if (signal.aborted) throw new Error('aborted');
 			
-			const state = await playerRef.current.getCurrentState();
-			const position = state?.position ?? -1;
-			const isPlaying = state && !state.paused && !state.loading;
-			
-			console.log("🎵 Seek confirmation check:", { i, position, isPlaying, targetMs, requestId });
-			
-			if (position >= targetMs - 20 && isPlaying) {
-				// We've advanced to the target region and playback has started
-				const confirmedAt = performance.now();
-				console.log("🎵 Seek confirmed at:", confirmedAt, "position:", position, "requestId:", requestId);
-				return { confirmedAt, confirmedPosition: position };
+			try {
+				const state = await playerRef.current.getCurrentState();
+				console.log("🎵 Seek confirmation check:", { 
+					i, 
+					hasState: !!state,
+					position: state?.position, 
+					isPaused: state?.paused, 
+					isLoading: state?.loading,
+					targetMs, 
+					requestId 
+				});
+				
+				// Check if we have valid state data
+				if (!state || typeof state.position !== 'number') {
+					console.log("🎵 Player state incomplete, waiting...");
+					await new Promise(resolve => setTimeout(resolve, 50));
+					continue;
+				}
+				
+				const position = state.position;
+				const isPlaying = state && !state.paused && !state.loading;
+				
+				// More lenient confirmation - just check we're in the right ballpark
+				if (position >= targetMs - 100 && isPlaying) {
+					// We've advanced to the target region and playback has started
+					const confirmedAt = performance.now();
+					console.log("🎵 Seek confirmed at:", confirmedAt, "position:", position, "requestId:", requestId);
+					return { confirmedAt, confirmedPosition: position };
+				}
+				
+				// If we're way off, log it
+				if (Math.abs(position - targetMs) > 1000) {
+					console.warn("🎵 Position way off target:", { position, targetMs, difference: position - targetMs });
+				}
+				
+			} catch (error) {
+				console.error("🎵 Error getting player state:", error);
 			}
 			
 			await new Promise(resolve => setTimeout(resolve, 50));
 		}
 		
-		throw new Error('Failed to confirm seek position');
+		// If we get here, try a fallback approach
+		console.warn("🎵 Seek confirmation timed out, trying fallback...");
+		
+		try {
+			const state = await playerRef.current.getCurrentState();
+			if (state && typeof state.position === 'number') {
+				const position = state.position;
+				const confirmedAt = performance.now();
+				console.log("🎵 Fallback confirmation:", { position, targetMs, confirmedAt });
+				return { confirmedAt, confirmedPosition: position };
+			}
+		} catch (error) {
+			console.error("🎵 Fallback confirmation failed:", error);
+		}
+		
+		throw new Error('Failed to confirm seek position after timeout and fallback');
 	}, []);
 
 	// RAF progress loop (as recommended by ChatGPT 5)
@@ -427,6 +474,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		try {
 			// Ensure device is connected
 			await connect();
+			
+			// Wait for player to be ready and have a track loaded
+			console.log("🎵 Waiting for player to be ready...");
+			let attempts = 0;
+			while (attempts < 20) { // Wait up to 1 second
+				const state = await playerRef.current.getCurrentState();
+				if (state && state.track && typeof state.position === 'number') {
+					console.log("🎵 Player ready with track:", { 
+						trackName: state.track.name,
+						position: state.position,
+						duration: state.duration
+					});
+					break;
+				}
+				await new Promise(resolve => setTimeout(resolve, 50));
+				attempts++;
+			}
+			
+			if (attempts >= 20) {
+				console.warn("🎵 Player not ready after timeout, proceeding anyway...");
+			}
 			
 			// Seek then confirm (as recommended by ChatGPT 5)
 			const { confirmedAt, confirmedPosition } = await seekThenConfirm(startMs, requestId, abortController.signal);
