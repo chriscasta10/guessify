@@ -328,14 +328,15 @@ export function GuessifyGame() {
 					}
 				});
 				// Safety hard-cap: ensure complete stop even if state event lags
-				setTimeout(() => {
+				clearHardCapTimeout();
+				hardCapTimeoutRef.current = setTimeout(() => {
 					if (!isPlayingRef.current) return;
 					console.log("⛔ Hard-cap stop enforcing exact duration");
 					isPlayingRef.current = false;
 					try { pause(); } catch {}
 					if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 					setGameState("guessing");
-				}, currentLevelRef.current.duration + 60);
+				}, currentLevelRef.current.duration + 40);
 			} else {
 				console.log("GuessifyGame: State change ignored - conditions not met:", {
 					hasState: !!playerState,
@@ -375,6 +376,7 @@ export function GuessifyGame() {
 	useEffect(() => {
 		return () => {
 			clearPlaybackTimeout();
+			clearHardCapTimeout();
 		};
 	}, [clearPlaybackTimeout]);
 
@@ -419,6 +421,7 @@ export function GuessifyGame() {
 
 		// Clear any existing timeout and reset state
 		clearPlaybackTimeout();
+		clearHardCapTimeout();
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
 		currentSnippetPositionRef.current = 0; // Reset snippet position
@@ -492,6 +495,7 @@ export function GuessifyGame() {
 		// If overriding with a new level, force-stop current playback first
 		if (specificLevel) {
 			clearPlaybackTimeout();
+			clearHardCapTimeout();
 			isPlayingRef.current = false;
 			try { pause(); } catch {}
 			if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
@@ -736,6 +740,7 @@ export function GuessifyGame() {
 			// If currently playing/replaying, force stop immediately so More Time takes over
 			if (isPlayingRef.current) {
 				clearPlaybackTimeout();
+				clearHardCapTimeout();
 				isPlayingRef.current = false;
 				try { pause(); } catch {}
 				if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
@@ -766,13 +771,14 @@ export function GuessifyGame() {
 				void playCurrentLevelWithLevel(nextLevel);
 			}, 25);
 		}
-	}, [currentRound, clearPlaybackTimeout, pause, playCurrentLevelWithLevel]);
+	}, [currentRound, clearPlaybackTimeout, clearHardCapTimeout, pause, playCurrentLevelWithLevel]);
 
 	const submitGuess = useCallback(() => {
 		if (!currentRound || !selectedSearchResult) return;
 
 		// Stop any playback immediately to prevent bleed into end screen or next round
 		clearPlaybackTimeout();
+		clearHardCapTimeout();
 		isPlayingRef.current = false;
 		currentSnippetPositionRef.current = 0;
 		currentLevelRef.current = null;
@@ -830,6 +836,7 @@ export function GuessifyGame() {
 			
 			// Reset level/timer state to avoid carryover into next round
 			clearPlaybackTimeout();
+			clearHardCapTimeout();
 			isPlayingRef.current = false;
 			currentSnippetPositionRef.current = 0;
 			currentLevelRef.current = null;
@@ -854,14 +861,20 @@ export function GuessifyGame() {
 			});
 			setGameState("gameOver");
 		}
-	}, [currentRound, selectedSearchResult, gameStats.currentScore, gameStats.currentStreak, clearPlaybackTimeout, pause]);
+	}, [currentRound, selectedSearchResult, gameStats.currentScore, gameStats.currentStreak, clearPlaybackTimeout, clearHardCapTimeout, pause]);
 
 	const giveUp = useCallback(() => {
 		if (!currentRound) return;
 		
 		// CRITICAL FIX: Clear any active timeouts to prevent state conflicts
 		clearPlaybackTimeout();
+		clearHardCapTimeout();
 		isPlayingRef.current = false;
+		currentSnippetPositionRef.current = 0;
+		currentLevelRef.current = null;
+		
+		// Play wrong SFX
+		playSfx(wrongSfxRef);
 		
 		// Give up - end run with 0 points, break streak
 		setGameStats(prev => ({
@@ -891,7 +904,7 @@ export function GuessifyGame() {
 		} catch (e) {
 			console.log("SDK pause during give up failed:", e);
 		}
-	}, [currentRound, gameStats.currentScore, clearPlaybackTimeout, pause]);
+	}, [currentRound, gameStats.currentScore, clearPlaybackTimeout, clearHardCapTimeout, pause]);
 
 	const handleSearchSelect = useCallback((result: SearchResult) => {
 		setSelectedSearchResult(result);
@@ -932,7 +945,7 @@ export function GuessifyGame() {
 	};
 
 	return (
-		<div className="min-h-screen w-full bg-gradient-to-br from-black via-gray-900 to-black text-white relative overflow-hidden">
+		<div className="min-h-screen w-full bg-transparent text-white relative overflow-hidden">
 			{/* Background Design Elements - Full Screen Coverage */}
 			{/* Left Side - Extended Coverage */}
 			<div className="absolute left-0 top-0 w-1/3 h-full">
@@ -1126,6 +1139,7 @@ export function GuessifyGame() {
 								console.log("Manual stop button clicked");
 								if (isPlayingRef.current) {
 									clearPlaybackTimeout();
+									clearHardCapTimeout();
 									isPlayingRef.current = false;
 									setGameState("guessing");
 									setAudioDebug("Manual stop - time to guess!");
