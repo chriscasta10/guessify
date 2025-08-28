@@ -7,9 +7,13 @@ type SpotifySavedTracksResponse = {
 			id: string;
 			uri: string;
 			name: string;
-			artists: Array<{ name: string }>;
+			artists: Array<{ id: string; name: string }>; // ✅ FIXED: Include artist IDs
 			preview_url: string | null;
 			duration_ms: number;
+			album: { // ✅ FIXED: Include album data
+				name: string;
+				images: Array<{ url: string; width: number; height: number }>;
+			};
 		};
 	}>;
 	next: string | null;
@@ -47,7 +51,11 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 			id: track.id,
 			uri: track.uri,
 			name: track.name,
-			artist: track.artists.map((a) => a.name).join(", "),
+			artist: track.artists.map((a) => a.name).join(", "), // Keep for backward compatibility
+			// ✅ FIXED: Preserve full artist data
+			artists: track.artists, // Full artists array with IDs
+			// ✅ FIXED: Preserve album data
+			album: track.album,
 			hasPreview: Boolean(track.preview_url),
 			previewUrl: track.preview_url ?? undefined,
 			durationMs: track.duration_ms,

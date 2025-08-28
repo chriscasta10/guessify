@@ -16,7 +16,14 @@ export type LikedTrack = {
 	id: string;
 	uri: string;
 	name: string;
-	artist: string;
+	artist: string; // Keep for backward compatibility
+	// ✅ NEW: Full artist data with IDs
+	artists: Array<{ id: string; name: string }>;
+	// ✅ NEW: Album data with images
+	album: {
+		name: string;
+		images: Array<{ url: string; width: number; height: number }>;
+	};
 	hasPreview: boolean;
 	previewUrl?: string;
 	durationMs: number;

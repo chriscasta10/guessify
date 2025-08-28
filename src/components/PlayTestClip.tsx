@@ -417,7 +417,10 @@ export function GuessifyGame() {
 			levelDuration: currentLevel.duration,
 			formattedDuration: formatTime(currentLevel.duration),
 			currentLevelRef: currentLevelRef.current?.name,
-			currentLevelRefDuration: currentLevelRef.current?.duration
+			currentLevelRefDuration: currentLevelRef.current?.duration,
+			// ✅ NEW: Show the exact duration that will be used
+			willPlayFor: formatTime(currentLevel.duration),
+			levelMismatch: currentLevelRef.current?.duration !== currentLevel.duration ? "⚠️ MISMATCH!" : "✅ Match"
 		});
 		
 		// CRITICAL FIX: Use stored snippet position for replay, or generate new one
@@ -631,9 +634,10 @@ export function GuessifyGame() {
 			const nextLevelIndex = currentRound.currentLevelIndex + 1;
 			const nextLevel = GAME_LEVELS[nextLevelIndex];
 			
-			console.log(`Moving from level ${currentRound.currentLevelIndex} (${GAME_LEVELS[currentRound.currentLevelIndex].name}) to level ${nextLevelIndex} (${nextLevel.name})`);
-			console.log(`Duration changing from ${formatTime(GAME_LEVELS[currentRound.currentLevelIndex].duration)} to ${formatTime(nextLevel.duration)}`);
+			console.log(`🎯 Moving from level ${currentRound.currentLevelIndex} (${GAME_LEVELS[currentRound.currentLevelIndex].name}) to level ${nextLevelIndex} (${nextLevel.name})`);
+			console.log(`⏱️ Duration changing from ${formatTime(GAME_LEVELS[currentRound.currentLevelIndex].duration)} to ${formatTime(nextLevel.duration)}`);
 			
+			// CRITICAL FIX: Update the round state FIRST
 			setCurrentRound(prev => prev ? {
 				...prev,
 				currentLevelIndex: nextLevelIndex,
@@ -649,10 +653,19 @@ export function GuessifyGame() {
 			// CRITICAL FIX: Update the current level reference to the new level
 			currentLevelRef.current = nextLevel;
 			
-			// Auto-play the new level after a short delay
+			// CRITICAL FIX: Wait for state update, then play with new level
 			setTimeout(() => {
-				void playCurrentLevel();
-			}, 300);
+				// Double-check we have the updated level
+				const updatedRound = currentRound;
+				if (updatedRound) {
+					const currentLevel = GAME_LEVELS[updatedRound.currentLevelIndex];
+					console.log(`🎵 Auto-playing new level: ${currentLevel.name} (${formatTime(currentLevel.duration)})`);
+					
+					// Force update the level reference and play
+					currentLevelRef.current = currentLevel;
+					void playCurrentLevel();
+				}
+			}, 100); // Reduced delay for faster response
 		}
 	}, [currentRound, playCurrentLevel]);
 
