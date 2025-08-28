@@ -481,16 +481,27 @@ export function GuessifyGame() {
 
 	// CRITICAL FIX: New function that takes a specific level parameter
 	const playCurrentLevelWithLevel = useCallback(async (specificLevel?: any) => {
-		if (!currentRound) return;
+		console.log("🎵 playCurrentLevelWithLevel called:", {
+			specificLevel: specificLevel?.name || "none",
+			currentGameState: gameState,
+			hasCurrentRound: !!currentRound,
+			isPlayingRef: isPlayingRef.current
+		});
+		
+		if (!currentRound) {
+			console.log("❌ No current round, cannot play");
+			return;
+		}
 
 		// Prevent multiple simultaneous plays unless this is an override for a new level
 		if (isPlayingRef.current && !specificLevel) {
-			console.log("Already playing, ignoring play request");
+			console.log("⚠️ Already playing, ignoring play request");
 			return;
 		}
 
 		// If overriding with a new level, force-stop current playback first
 		if (specificLevel) {
+			console.log("🔄 Overriding with new level, stopping current playback");
 			// clearPlaybackTimeout(); // No longer needed as provider handles timeouts
 			clearHardCapTimeout();
 			isPlayingRef.current = false;
@@ -504,7 +515,7 @@ export function GuessifyGame() {
 		// Record intended duration for the upcoming playback start event
 		pendingDurationRef.current = currentLevel.duration;
 		
-		console.log("🎵 playCurrentLevelWithLevel called with:", {
+		console.log("🎵 playCurrentLevelWithLevel details:", {
 			specificLevel: specificLevel?.name || "none",
 			levelIndex: currentRound.currentLevelIndex,
 			levelName: currentLevel.name,
@@ -514,7 +525,9 @@ export function GuessifyGame() {
 			currentLevelRefDuration: currentLevelRef.current?.duration,
 			// ✅ NEW: Show the exact duration that will be used
 			willPlayFor: formatTime(currentLevel.duration),
-			levelMismatch: currentLevelRef.current?.duration !== currentLevel.duration ? "⚠️ MISMATCH!" : "✅ Match"
+			levelMismatch: currentLevelRef.current?.duration !== currentLevel.duration ? "⚠️ MISMATCH!" : "✅ Match",
+			trackUri: track?.uri,
+			trackName: track?.name
 		});
 		
 		// CRITICAL FIX: Use stored snippet position for replay, or generate new one
@@ -522,21 +535,23 @@ export function GuessifyGame() {
 		if (hasPlayedRef.current && currentSnippetPositionRef.current > 0 && !specificLevel) {
 			// Replay: use the same snippet position (only if not changing levels)
 			snippetPosition = currentSnippetPositionRef.current;
-			console.log("Replaying same snippet at position:", snippetPosition);
+			console.log("🔄 Replaying same snippet at position:", snippetPosition);
 		} else {
 			// First play or level change: generate new random position
 			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
 			currentSnippetPositionRef.current = snippetPosition; // Store for replay
-			console.log("New snippet position:", snippetPosition);
+			console.log("🎯 New snippet position:", snippetPosition);
 		}
 
 		// CRITICAL FIX: For "More Time" button, stay in guessing mode and just show playing message
 		if (gameState === "guessing" || specificLevel) {
 			// This is a replay or level change - just show playing message, don't change state
+			console.log("🔄 Replay/level change - staying in current state:", gameState);
 			setDebugInfo(`Playing ${currentLevel.name} level clip...`);
 			setAudioDebug(`Playing ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
 		} else {
 			// This is first play - change to playing state
+			console.log("🎯 First play - changing gameState from", gameState, "to playing");
 			setDebugInfo(`Playing ${currentLevel.name} level clip...`);
 			setGameState("playing");
 			setAudioDebug(`Starting ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
@@ -547,12 +562,22 @@ export function GuessifyGame() {
 		// CRITICAL FIX: Update the current level reference to match the current round
 		currentLevelRef.current = currentLevel;
 		
+		console.log("🎵 About to call playSnippet with:", {
+			uri: track.uri,
+			startMs: snippetPosition,
+			durationMs: currentLevel.duration,
+			gameState: gameState,
+			isPlayingRef: isPlayingRef.current
+		});
+		
 		try {
 			// Always try Spotify SDK first (works for all tracks)
 			if (isSdkAvailable) {
-				console.log("Using Spotify SDK");
+				console.log("🎵 Using Spotify SDK for playback");
 				await connect();
+				console.log("🎵 Connected to Spotify, calling playSnippet...");
 				await playSnippet(track.uri, snippetPosition, currentLevel.duration);
+				console.log("🎵 playSnippet completed successfully");
 				return;
 			}
 
@@ -895,19 +920,33 @@ export function GuessifyGame() {
 
 	// Subscribe to provider snippet events to drive the time bar
 	useEffect(() => {
-		onSnippetStart((d: number) => {
+		const handleSnippetStart = (d: number) => {
+			console.log("🎵 Snippet start event received:", d, "ms, current gameState:", gameState);
 			isPlayingRef.current = true;
-			if (gameState !== "playing") setGameState("playing");
+			if (gameState !== "playing") {
+				console.log("🎵 Setting gameState to playing");
+				setGameState("playing");
+			}
 			startProgress(d);
-		});
-		onSnippetEnd(() => {
+		};
+		
+		const handleSnippetEnd = () => {
+			console.log("🎵 Snippet end event received, current gameState:", gameState);
 			isPlayingRef.current = false;
 			// Clamp at end but keep bar rendered until next start
 			setProgressMs(progressTotalRef.current);
 			setGameState("guessing");
-		});
-		// no explicit cleanup as provider holds listeners
-	}, [onSnippetStart, onSnippetEnd, gameState]);
+		};
+		
+		onSnippetStart(handleSnippetStart);
+		onSnippetEnd(handleSnippetEnd);
+		
+		// Cleanup function to remove listeners
+		return () => {
+			// Note: The provider doesn't have a removeListener method, so we rely on the provider's cleanup
+			// This effect should only run once on mount
+		};
+	}, [onSnippetStart, onSnippetEnd]); // Remove gameState dependency
 
 	return (
 		<div className="min-h-screen w-full bg-transparent text-white relative overflow-hidden">
