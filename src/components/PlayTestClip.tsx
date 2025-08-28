@@ -91,6 +91,8 @@ export function GuessifyGame() {
 	const currentLevelRef = useRef<GameLevel | null>(null);
 	// CRITICAL FIX: Store the exact snippet position for replay
 	const currentSnippetPositionRef = useRef<number>(0);
+	// Pending duration for the next started playback (used to bind timers exactly)
+	const pendingDurationRef = useRef<number | null>(null);
 
 	// Hard-cap timeout to guarantee exact stop time
 	const hardCapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
