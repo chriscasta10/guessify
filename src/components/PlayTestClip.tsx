@@ -589,28 +589,77 @@ export function GuessifyGame() {
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-white relative overflow-hidden">
-			{/* Background Design Elements - Left Side */}
-			<div className="absolute left-0 top-0 w-1/4 h-full">
-				<div className="absolute left-8 top-20 w-32 h-32 bg-gradient-to-br from-green-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-16 top-60 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-4 top-96 w-20 h-20 bg-gradient-to-br from-purple-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-20 top-[500px] w-16 h-16 bg-gradient-to-br from-yellow-500/10 to-transparent rounded-full blur-3xl"></div>
+			{/* Background Design Elements - Full Screen Coverage */}
+			{/* Left Side - Extended Coverage */}
+			<div className="absolute left-0 top-0 w-1/3 h-full">
+				<div className="absolute left-4 top-16 w-40 h-40 bg-gradient-to-br from-green-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-20 top-48 w-32 h-32 bg-gradient-to-br from-blue-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-8 top-80 w-24 h-24 bg-gradient-to-br from-purple-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-28 top-[400px] w-20 h-20 bg-gradient-to-br from-yellow-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-12 top-[600px] w-36 h-36 bg-gradient-to-br from-green-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-32 top-[700px] w-28 h-28 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
 			</div>
 
-			{/* Background Design Elements - Right Side */}
-			<div className="absolute right-0 top-0 w-1/4 h-full">
-				<div className="absolute right-8 top-32 w-28 h-28 bg-gradient-to-bl from-green-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-16 top-80 w-20 h-20 bg-gradient-to-bl from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-4 top-[400px] w-24 h-24 bg-gradient-to-bl from-purple-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-20 top-[600px] w-18 h-18 bg-gradient-to-bl from-yellow-500/10 to-transparent rounded-full blur-3xl"></div>
+			{/* Right Side - Extended Coverage */}
+			<div className="absolute right-0 top-0 w-1/3 h-full">
+				<div className="absolute right-4 top-20 w-36 h-36 bg-gradient-to-bl from-green-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-24 top-64 w-28 h-28 bg-gradient-to-bl from-blue-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-8 top-[350px] w-32 h-32 bg-gradient-to-bl from-purple-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-28 top-[500px] w-24 h-24 bg-gradient-to-bl from-yellow-500/15 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-12 top-[650px] w-40 h-40 bg-gradient-to-bl from-green-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-32 top-[750px] w-20 h-20 bg-gradient-to-bl from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
 			</div>
 
-			{/* Floating Music Notes */}
+			{/* Top Section - Extended Coverage */}
+			<div className="absolute top-0 left-0 w-full h-1/3">
+				<div className="absolute left-1/4 top-8 w-24 h-24 bg-gradient-to-b from-purple-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/4 top-16 w-20 h-20 bg-gradient-to-b from-blue-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute left-1/3 top-24 w-16 h-16 bg-gradient-to-b from-green-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/3 top-32 w-28 h-28 bg-gradient-to-b from-yellow-500/10 to-transparent rounded-full blur-2xl"></div>
+			</div>
+
+			{/* Bottom Section - Extended Coverage */}
+			<div className="absolute bottom-0 left-0 w-full h-1/3">
+				<div className="absolute left-1/4 bottom-16 w-32 h-32 bg-gradient-to-t from-green-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/4 bottom-24 w-24 h-24 bg-gradient-to-t from-blue-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute left-1/3 bottom-32 w-20 h-20 bg-gradient-to-t from-purple-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/3 bottom-40 w-36 h-36 bg-gradient-to-t from-yellow-500/10 to-transparent rounded-full blur-2xl"></div>
+			</div>
+
+			{/* Center Background Elements */}
+			<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+				<div className="w-full max-w-6xl h-full relative">
+					{/* Center left */}
+					<div className="absolute left-8 top-1/4 w-16 h-16 bg-gradient-to-r from-green-500/5 to-transparent rounded-full blur-xl"></div>
+					<div className="absolute left-16 top-3/4 w-12 h-12 bg-gradient-to-r from-blue-500/5 to-transparent rounded-full blur-xl"></div>
+					
+					{/* Center right */}
+					<div className="absolute right-8 top-1/3 w-20 h-20 bg-gradient-to-l from-purple-500/5 to-transparent rounded-full blur-xl"></div>
+					<div className="absolute right-16 top-2/3 w-14 h-14 bg-gradient-to-l from-yellow-500/5 to-transparent rounded-full blur-xl"></div>
+				</div>
+			</div>
+
+			{/* Floating Music Notes - Extended Coverage */}
 			<div className="absolute inset-0 pointer-events-none">
-				<div className="absolute left-1/4 top-1/4 text-4xl text-green-500/20 animate-bounce">♪</div>
-				<div className="absolute right-1/3 top-1/3 text-3xl text-blue-500/20 animate-pulse">♫</div>
+				<div className="absolute left-8 top-1/4 text-4xl text-green-500/20 animate-bounce">♪</div>
+				<div className="absolute right-12 top-1/3 text-3xl text-blue-500/20 animate-pulse">♫</div>
 				<div className="absolute left-1/3 bottom-1/4 text-2xl text-purple-500/20 animate-bounce">♩</div>
 				<div className="absolute right-1/4 bottom-1/3 text-3xl text-yellow-500/20 animate-pulse">♪</div>
+				<div className="absolute left-1/2 top-1/6 text-2xl text-green-500/15 animate-pulse">♫</div>
+				<div className="absolute right-1/2 bottom-1/6 text-3xl text-blue-500/15 animate-bounce">♪</div>
+				<div className="absolute left-1/6 top-1/2 text-2xl text-purple-500/15 animate-bounce">♩</div>
+				<div className="absolute right-1/6 top-1/2 text-2xl text-yellow-500/15 animate-pulse">♫</div>
+			</div>
+
+			{/* Subtle Grid Pattern Overlay */}
+			<div className="absolute inset-0 pointer-events-none opacity-5">
+				<div className="w-full h-full" style={{
+					backgroundImage: `
+						linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+						linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+					`,
+					backgroundSize: '50px 50px'
+				}}></div>
 			</div>
 
 			{/* User Profile Header */}
@@ -834,12 +883,25 @@ export function GuessifyGame() {
 									{/* Glowing background effect */}
 									<div className="absolute inset-0 bg-gradient-to-r from-green-500/30 to-blue-500/30 rounded-full blur-xl scale-150"></div>
 									
-									{/* Artist image with border and shadow */}
-									<img 
-										src={endScreenData.track.album?.images?.[0]?.url || '/default-album.png'} 
-										alt="Artist/Album Art"
-										className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl transform transition-all duration-500 hover:scale-110"
-									/>
+									{/* CRITICAL FIX: Handle missing album images properly */}
+									{endScreenData.track.album?.images?.[0]?.url ? (
+										<img 
+											src={endScreenData.track.album.images[0].url} 
+											alt="Artist/Album Art"
+											className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl transform transition-all duration-500 hover:scale-110 object-cover"
+											onError={(e) => {
+												// Fallback to default if image fails to load
+												const target = e.target as HTMLImageElement;
+												target.src = '/default-album.png';
+												target.onerror = null; // Prevent infinite loop
+											}}
+										/>
+									) : (
+										/* Fallback for tracks without album images */
+										<div className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center">
+											<span className="text-white text-4xl">🎵</span>
+										</div>
+									)}
 									
 									{/* Success checkmark overlay for correct guesses */}
 									{endScreenData.wasCorrect && (
