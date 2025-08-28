@@ -316,9 +316,18 @@ export function GuessifyGame() {
 			console.log("New snippet position:", snippetPosition);
 		}
 
-		setDebugInfo(`Playing ${currentLevel.name} level clip...`);
-		setGameState("playing");
-		setAudioDebug(`Starting ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
+		// CRITICAL FIX: Don't change game state for replay - stay in guessing mode
+		if (gameState === "guessing") {
+			// This is a replay - just show playing message, don't change state
+			setDebugInfo(`Playing ${currentLevel.name} level clip...`);
+			setAudioDebug(`Replaying ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
+		} else {
+			// This is first play - change to playing state
+			setDebugInfo(`Playing ${currentLevel.name} level clip...`);
+			setGameState("playing");
+			setAudioDebug(`Starting ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
+		}
+		
 		isPlayingRef.current = true;
 		hasPlayedRef.current = true;
 		currentLevelRef.current = currentLevel; // Set current level for timeout listener
@@ -417,6 +426,8 @@ export function GuessifyGame() {
 					startPlaybackTimeout(currentLevel.duration, () => {
 						console.log("🚨 PREVIEW TIMEOUT TRIGGERED - STOPPING AUDIO");
 						isPlayingRef.current = false;
+						
+						// CRITICAL FIX: Return to guessing state after timeout
 						setGameState("guessing");
 						setAudioDebug("🚨 PREVIEW TIMEOUT: Time's up - time to guess!");
 						
@@ -456,7 +467,7 @@ export function GuessifyGame() {
 			setGameState("waiting");
 			isPlayingRef.current = false;
 		}
-	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio]);
+	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio, gameState]);
 
 	const nextLevel = useCallback(() => {
 		if (!currentRound) return;
@@ -883,25 +894,54 @@ export function GuessifyGame() {
 									{/* Glowing background effect */}
 									<div className="absolute inset-0 bg-gradient-to-r from-green-500/30 to-blue-500/30 rounded-full blur-xl scale-150"></div>
 									
-									{/* CRITICAL FIX: Handle missing album images properly */}
-									{endScreenData.track.album?.images?.[0]?.url ? (
-										<img 
-											src={endScreenData.track.album.images[0].url} 
-											alt="Artist/Album Art"
-											className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl transform transition-all duration-500 hover:scale-110 object-cover"
-											onError={(e) => {
-												// Fallback to default if image fails to load
-												const target = e.target as HTMLImageElement;
-												target.src = '/default-album.png';
-												target.onerror = null; // Prevent infinite loop
-											}}
-										/>
-									) : (
-										/* Fallback for tracks without album images */
-										<div className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center">
-											<span className="text-white text-4xl">🎵</span>
-										</div>
-									)}
+									{/* CRITICAL FIX: Handle missing album images properly with debugging */}
+									{(() => {
+										// Debug logging for artist picture loading
+										const track = endScreenData.track;
+										const albumImages = track.album?.images;
+										const firstImageUrl = albumImages?.[0]?.url;
+										
+										console.log("🎨 Artist Picture Debug:", {
+											trackName: track.name,
+											artistName: track.artist,
+											hasAlbum: !!track.album,
+											albumImages: albumImages,
+											firstImageUrl: firstImageUrl,
+											imageCount: albumImages?.length || 0
+										});
+										
+										if (firstImageUrl) {
+											return (
+												<img 
+													src={firstImageUrl} 
+													alt="Artist/Album Art"
+													className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl transform transition-all duration-500 hover:scale-110 object-cover"
+													onLoad={() => {
+														console.log("✅ Artist picture loaded successfully:", firstImageUrl);
+														setAudioDebug("Artist picture loaded successfully!");
+													}}
+													onError={(e) => {
+														console.error("❌ Artist picture failed to load:", firstImageUrl, e);
+														setAudioDebug("Artist picture failed to load, showing fallback");
+														// Fallback to default if image fails to load
+														const target = e.target as HTMLImageElement;
+														target.style.display = 'none';
+														// Show fallback instead
+														const fallback = target.nextElementSibling as HTMLElement;
+														if (fallback) fallback.style.display = 'flex';
+													}}
+												/>
+											);
+										} else {
+											console.log("⚠️ No album images available for track:", track.name);
+											return null;
+										}
+									})()}
+									
+									{/* Fallback for tracks without album images or failed loads */}
+									<div className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center" style={{ display: endScreenData.track.album?.images?.[0]?.url ? 'none' : 'flex' }}>
+										<span className="text-white text-4xl">🎵</span>
+									</div>
 									
 									{/* Success checkmark overlay for correct guesses */}
 									{endScreenData.wasCorrect && (
@@ -931,6 +971,18 @@ export function GuessifyGame() {
 									) : (
 										<>Final Score: <span className="text-white font-bold text-xl">{endScreenData.finalScore}</span> | Final Streak: <span className="text-white font-bold text-xl">{endScreenData.finalStreak}</span></>
 									)}
+								</div>
+							</div>
+							
+							{/* Debug Info for Artist Picture */}
+							<div className="mt-4 p-3 bg-gray-800/50 rounded-lg text-left">
+								<div className="text-xs text-gray-400 mb-2">🎨 Artist Picture Debug:</div>
+								<div className="text-xs text-gray-300 space-y-1">
+									<div>Track: {endScreenData.track.name}</div>
+									<div>Artist: {endScreenData.track.artist}</div>
+									<div>Has Album: {endScreenData.track.album ? 'Yes' : 'No'}</div>
+									<div>Album Images: {endScreenData.track.album?.images?.length || 0}</div>
+									<div>First Image URL: {endScreenData.track.album?.images?.[0]?.url ? 'Available' : 'Missing'}</div>
 								</div>
 							</div>
 						</div>
