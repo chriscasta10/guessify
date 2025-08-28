@@ -27,16 +27,17 @@ const MAX_CACHE_ITEMS = 1000; // Avoid exceeding localStorage quota on very larg
 
 export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	const [tracks, setTracks] = useState<LikedTrack[]>(() => {
-		// Load from localStorage on init if available, with schema validation
+		// Load from localStorage on init if available, with more permissive validation
 		if (typeof window !== 'undefined') {
 			try {
 				const savedVersion = localStorage.getItem(TRACKS_CACHE_VERSION_KEY);
 				const saved = localStorage.getItem(TRACKS_CACHE_KEY);
 				if (saved && savedVersion === TRACKS_CACHE_VERSION) {
 					const parsed: LikedTrack[] = JSON.parse(saved);
-					// Validate that items include artists with id and album images
-					const valid = Array.isArray(parsed) && parsed.length > 0 && parsed.every(t => t && Array.isArray((t as any).artists) && (t as any).artists.length > 0 && (t as any).artists[0].id && (t as any).album && Array.isArray((t as any).album.images));
+					// More permissive validation - just check it's an array with some tracks
+					const valid = Array.isArray(parsed) && parsed.length > 0;
 					if (valid) {
+						console.log(`useLikedTracks: Loaded ${parsed.length} tracks from cache`);
 						return parsed;
 					}
 				}
@@ -59,11 +60,15 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	useEffect(() => {
 		if (typeof window !== 'undefined' && tracks.length > 0) {
 			try {
-				if (tracks.length <= MAX_CACHE_ITEMS) {
+				// Only cache if we have a reasonable number of tracks
+				if (tracks.length >= 10 && tracks.length <= MAX_CACHE_ITEMS) {
 					localStorage.setItem(TRACKS_CACHE_KEY, JSON.stringify(tracks));
 					localStorage.setItem(TRACKS_CACHE_VERSION_KEY, TRACKS_CACHE_VERSION);
+					console.log(`useLikedTracks: Cached ${tracks.length} tracks successfully`);
+				} else if (tracks.length < 10) {
+					console.log(`useLikedTracks: Not caching ${tracks.length} tracks (too few)`);
 				} else {
-					console.log(`useLikedTracks: skipping cache write (${tracks.length} items exceeds ${MAX_CACHE_ITEMS})`);
+					console.log(`useLikedTracks: Not caching ${tracks.length} tracks (exceeds ${MAX_CACHE_ITEMS})`);
 					// Ensure we don't hold a huge stale payload in storage
 					localStorage.removeItem(TRACKS_CACHE_KEY);
 				}
@@ -184,6 +189,14 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 			setLoading(false);
 		}
 	}, [fetchPage, limit, normalize, tracks.length]);
+
+	// Auto-load tracks if cache is empty
+	useEffect(() => {
+		if (tracks.length === 0 && !loading && !error) {
+			console.log("useLikedTracks: Cache empty, auto-loading tracks...");
+			void loadAll();
+		}
+	}, [tracks.length, loading, error, loadAll]);
 
 	return useMemo(
 		() => ({ tracks, loading, error, loadAll, loadingProgress }),

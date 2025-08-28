@@ -1077,7 +1077,7 @@ export function GuessifyGame() {
 			)}
 
 			{/* Refresh Liked Songs Button - Top Left */}
-			<div className="fixed top-4 left-4 z-50">
+			<div className="fixed top-16 left-4 z-50">
 				<button 
 					onClick={() => {
 						console.log("🔄 Manual refresh of liked songs requested");
