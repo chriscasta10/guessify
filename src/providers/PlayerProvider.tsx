@@ -17,7 +17,6 @@ type PlayerContextValue = {
 	playSnippet: (uri: string, startMs: number, durationMs: number) => Promise<void>;
 	onSnippetStart: (cb: (durationMs: number) => void) => void;
 	onSnippetEnd: (cb: () => void) => void;
-	clearReplayCache: () => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
@@ -52,14 +51,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	const snippetRafRef = useRef<number | null>(null);
 	const snippetStartListenersRef = useRef<Array<(d: number) => void>>([]);
 	const snippetEndListenersRef = useRef<Array<() => void>>([]);
-	
-	// Smart replay optimization
-	const lastSnippetRef = useRef<{
-		uri: string;
-		startMs: number;
-		durationMs: number;
-		requestId: number;
-	} | null>(null);
 
 	const initPlayer = useCallback(async () => {
 		if (ready) return;
@@ -328,52 +319,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		clearPlaybackTimeout();
 	};
 
-	const clearReplayCache = useCallback(() => {
-		lastSnippetRef.current = null;
-		console.log("🎵 Replay cache cleared");
-	}, []);
-
 	const playSnippet = useCallback(async (uri: string, startMs: number, durationMs: number) => {
 		console.log("🎵 playSnippet called:", { uri, startMs, durationMs, requestId: playRequestIdRef.current + 1 });
-		
-		// Check if this is a replay of the exact same snippet
-		const isReplay = lastSnippetRef.current && 
-			lastSnippetRef.current.uri === uri && 
-			lastSnippetRef.current.startMs === startMs && 
-			lastSnippetRef.current.durationMs === durationMs;
-		
-		if (isReplay) {
-			console.log("🎵 Smart replay detected - skipping pause/seek/play cycle");
-			// Cancel any in-flight snippet and bump requestId
-			cancelSnippetTimers();
-			playRequestIdRef.current++;
-			const requestId = playRequestIdRef.current;
-			
-			// Just restart the timer immediately
-			const trueStart = performance.now() + 50; // minimal buffer for replay
-			console.log("🎵 Starting replay timer immediately at:", new Date(Date.now() + 50).toISOString());
-			
-			// Fire start event immediately
-			snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
-			
-			const tick = async () => {
-				if (requestId !== playRequestIdRef.current) return; // canceled
-				const elapsed = performance.now() - trueStart;
-				if (elapsed >= durationMs - 20) {
-					console.log("🎵 Replay timer completed, pausing and firing end event");
-					await pause();
-					snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
-					cancelSnippetTimers();
-					return;
-				}
-				snippetRafRef.current = requestAnimationFrame(tick);
-			};
-			snippetRafRef.current = requestAnimationFrame(tick);
-			return;
-		}
-		
-		// Store this snippet for future replay optimization
-		lastSnippetRef.current = { uri, startMs, durationMs, requestId: playRequestIdRef.current + 1 };
 		
 		// Cancel any in-flight snippet and bump requestId
 		cancelSnippetTimers();
@@ -507,7 +454,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		playSnippet,
 		onSnippetStart,
 		onSnippetEnd,
-		clearReplayCache,
 	};
 
 	return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

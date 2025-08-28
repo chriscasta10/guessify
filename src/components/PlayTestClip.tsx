@@ -48,7 +48,7 @@ interface UserProfile {
 }
 
 export function GuessifyGame() {
-	const { initPlayer, connect, playSnippet, pause, seek, isSdkAvailable, onSnippetStart, onSnippetEnd, onStateChange, clearReplayCache } = usePlayer() as any;
+	const { initPlayer, connect, playSnippet, pause, seek, isSdkAvailable, onSnippetStart, onSnippetEnd, onStateChange } = usePlayer() as any;
 	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(50);
 	const [gameState, setGameState] = useState<GameState>("waiting");
 	const [currentRound, setCurrentRound] = useState<RoundData | null>(null);
@@ -91,6 +91,8 @@ export function GuessifyGame() {
 	const currentLevelRef = useRef<GameLevel | null>(null);
 	// CRITICAL FIX: Store the exact snippet position for replay
 	const currentSnippetPositionRef = useRef<number>(0);
+	// Store snippet positions for each level to ensure consistency
+	const levelSnippetPositionsRef = useRef<Record<number, number>>({});
 	// Pending duration for the next started playback (used to bind timers exactly)
 	const pendingDurationRef = useRef<number | null>(null);
 
@@ -418,12 +420,13 @@ export function GuessifyGame() {
 		// Clear any existing timeout and reset state
 		// clearPlaybackTimeout(); // No longer needed as provider handles timeouts
 		clearHardCapTimeout();
-		clearReplayCache(); // Clear replay cache for new round
 		stopProgress();
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
 		currentSnippetPositionRef.current = 0; // Reset snippet position
 		currentLevelRef.current = null; // Reset level ref to avoid duration carryover
+		// Clear all level snippet positions for new round
+		levelSnippetPositionsRef.current = {};
 		try { pause(); } catch {}
 		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
@@ -478,7 +481,7 @@ export function GuessifyGame() {
 		if (track.previewUrl) {
 			void preloadAudio(track);
 		}
-	}, [tracks, loading, error, loadAll, clearHardCapTimeout, hasStartedGame, preloadAudio, pause]);
+	}, [tracks, loading, error, loadAll, hasStartedGame, preloadAudio, pause]);
 
 	// CRITICAL FIX: New function that takes a specific level parameter
 	const playCurrentLevelWithLevel = useCallback(async (specificLevel?: any) => {
@@ -533,15 +536,16 @@ export function GuessifyGame() {
 		
 		// CRITICAL FIX: Use stored snippet position for replay, or generate new one
 		let snippetPosition: number;
-		if (hasPlayedRef.current && currentSnippetPositionRef.current > 0 && !specificLevel) {
-			// Replay: use the same snippet position (only if not changing levels)
-			snippetPosition = currentSnippetPositionRef.current;
-			console.log("🔄 Replaying same snippet at position:", snippetPosition);
+		if (hasPlayedRef.current && levelSnippetPositionsRef.current[currentRound.currentLevelIndex] && !specificLevel) {
+			// Replay: use the exact same snippet position for this level
+			snippetPosition = levelSnippetPositionsRef.current[currentRound.currentLevelIndex];
+			console.log("🔄 Replaying exact same snippet at position:", snippetPosition, "for level", currentRound.currentLevelIndex);
 		} else {
 			// First play or level change: generate new random position
 			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
-			currentSnippetPositionRef.current = snippetPosition; // Store for replay
-			console.log("🎯 New snippet position:", snippetPosition);
+			// Store this position for this specific level
+			levelSnippetPositionsRef.current[currentRound.currentLevelIndex] = snippetPosition;
+			console.log("🎯 New snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
 		}
 
 		// CRITICAL FIX: For "More Time" button, stay in guessing mode and just show playing message
@@ -709,7 +713,7 @@ export function GuessifyGame() {
 			hasPlayedRef.current = false; // Reset play state
 			
 			// CRITICAL FIX: Clear replay cache for new level
-			clearReplayCache();
+			// clearReplayCache(); // This was removed from usePlayer, so no longer needed here
 			
 			// CRITICAL FIX: Update the current level reference to the new level
 			currentLevelRef.current = nextLevel;
@@ -717,7 +721,7 @@ export function GuessifyGame() {
 			// CRITICAL FIX: Play the new level immediately with the correct duration
 			console.log(`🎵 Playing new level immediately: ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
 			
-			// Force play with the new level
+			// Force play with the new level - this will generate a new snippet position
 			setTimeout(() => {
 				// CRITICAL FIX: Pass the new level directly instead of relying on state
 				void playCurrentLevelWithLevel(nextLevel);
