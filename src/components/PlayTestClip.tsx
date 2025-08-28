@@ -130,29 +130,47 @@ export function GuessifyGame() {
 			const artistId = track.artists?.[0]?.id;
 			const artistName = track.artists?.[0]?.name || track.artist;
 			
-			if (!artistId) {
-				console.log("⚠️ No artist ID available for track:", track.name);
-				return null;
+			if (artistId) {
+				// Use artist ID if available (preferred method)
+				console.log("🎨 Fetching artist image by ID for:", artistName, "ID:", artistId);
+				
+				const response = await fetch(`/api/artists/${artistId}`);
+				if (response.ok) {
+					const artistData = await response.json();
+					const artistImages = artistData.images;
+					
+					if (artistImages && artistImages.length > 0) {
+						const imageUrl = artistImages[0].url;
+						console.log("✅ Found artist image by ID:", imageUrl);
+						return imageUrl;
+					} else {
+						console.log("⚠️ Artist has no images:", artistName);
+						return null;
+					}
+				} else {
+					console.error("❌ Failed to fetch artist data by ID:", response.status, response.statusText);
+					// Fall through to search method
+				}
 			}
 			
-			console.log("🎨 Fetching artist image for:", artistName, "ID:", artistId);
+			// Fallback: Search for artist by name when ID is not available
+			console.log("🎨 Falling back to artist search for:", artistName);
 			
-			// Call Spotify's Artist endpoint directly (this is the correct approach)
-			const response = await fetch(`/api/artists/${artistId}`);
-			if (response.ok) {
-				const artistData = await response.json();
-				const artistImages = artistData.images;
+			const searchResponse = await fetch(`/api/spotify-search?q=${encodeURIComponent(artistName)}&type=artist&limit=1`);
+			if (searchResponse.ok) {
+				const data = await searchResponse.json();
+				const artists = data.artists?.items;
 				
-				if (artistImages && artistImages.length > 0) {
-					const imageUrl = artistImages[0].url;
-					console.log("✅ Found artist image:", imageUrl);
+				if (artists && artists.length > 0 && artists[0].images && artists[0].images.length > 0) {
+					const imageUrl = artists[0].images[0].url;
+					console.log("✅ Found artist image by search:", imageUrl);
 					return imageUrl;
 				} else {
-					console.log("⚠️ Artist has no images:", artistName);
+					console.log("⚠️ No artist images found by search for:", artistName);
 					return null;
 				}
 			} else {
-				console.error("❌ Failed to fetch artist data:", response.status, response.statusText);
+				console.error("❌ Failed to search for artist:", searchResponse.status, searchResponse.statusText);
 				return null;
 			}
 		} catch (error) {
@@ -1112,6 +1130,7 @@ export function GuessifyGame() {
 									<div>Fetched Artist Image: {fetchedArtistImages[endScreenData.track.artist] ? 'Available' : 'Missing'}</div>
 									<div>Image Source: {endScreenData.track.album?.images?.[0]?.url ? 'Album' : fetchedArtistImages[endScreenData.track.artist] ? 'Artist API' : 'Fallback'}</div>
 									<div>Track Object Keys: {Object.keys(endScreenData.track).join(', ')}</div>
+									<div>Track Structure: {JSON.stringify(endScreenData.track, null, 2).substring(0, 200)}...</div>
 								</div>
 							</div>
 						</div>
