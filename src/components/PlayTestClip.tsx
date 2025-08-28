@@ -139,7 +139,9 @@ export function GuessifyGame() {
 			albumData: track.album,
 			// Legacy fields
 			hasPreview: track.hasPreview,
-			previewUrl: track.previewUrl
+			previewUrl: track.previewUrl,
+			// ✅ NEW: Show the full track object structure
+			fullTrackObject: track
 		});
 		
 		// CRITICAL FIX: Check if we have the new data structure
@@ -441,11 +443,11 @@ export function GuessifyGame() {
 			console.log("New snippet position:", snippetPosition);
 		}
 
-		// CRITICAL FIX: Don't change game state for replay - stay in guessing mode
-		if (gameState === "guessing") {
-			// This is a replay - just show playing message, don't change state
+		// CRITICAL FIX: For "More Time" button, stay in guessing mode and just show playing message
+		if (gameState === "guessing" || specificLevel) {
+			// This is a replay or level change - just show playing message, don't change state
 			setDebugInfo(`Playing ${currentLevel.name} level clip...`);
-			setAudioDebug(`Replaying ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
+			setAudioDebug(`Playing ${formatTime(currentLevel.duration)} snippet (${currentLevel.name} level)...`);
 		} else {
 			// This is first play - change to playing state
 			setDebugInfo(`Playing ${currentLevel.name} level clip...`);

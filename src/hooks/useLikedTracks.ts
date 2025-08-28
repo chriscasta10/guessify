@@ -47,7 +47,16 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 	}, [tracks]);
 
 	const normalize = useCallback((resp: SpotifySavedTracksResponse): LikedTrack[] => {
-		return resp.items.map(({ track }) => ({
+		console.log("🔍 Raw Spotify API response structure:", {
+			hasItems: !!resp.items,
+			itemCount: resp.items?.length,
+			sampleItem: resp.items?.[0],
+			sampleTrack: resp.items?.[0]?.track,
+			sampleArtists: resp.items?.[0]?.track?.artists,
+			sampleAlbum: resp.items?.[0]?.track?.album
+		});
+		
+		const normalized = resp.items.map(({ track }) => ({
 			id: track.id,
 			uri: track.uri,
 			name: track.name,
@@ -60,6 +69,16 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 			previewUrl: track.preview_url ?? undefined,
 			durationMs: track.duration_ms,
 		}));
+		
+		console.log("🔍 Normalized track structure:", {
+			sampleNormalized: normalized[0],
+			hasArtistsArray: !!normalized[0]?.artists,
+			hasAlbumData: !!normalized[0]?.album,
+			artistsSample: normalized[0]?.artists,
+			albumSample: normalized[0]?.album
+		});
+		
+		return normalized;
 	}, []);
 
 	const fetchPage = useCallback(async (offset: number) => {
