@@ -92,6 +92,19 @@ export function GuessifyGame() {
 	// CRITICAL FIX: Store the exact snippet position for replay
 	const currentSnippetPositionRef = useRef<number>(0);
 
+	// Celebration jingle for correct answers
+	const celebrationRef = useRef<HTMLAudioElement | null>(null);
+
+	useEffect(() => {
+		// Preload celebration sound
+		if (typeof window === 'undefined') return;
+		try {
+			celebrationRef.current = new Audio('/celebrate.mp3');
+			celebrationRef.current.preload = 'auto';
+			celebrationRef.current.volume = 0.6;
+		} catch {}
+	}, []);
+
 	// Load user profile from Spotify
 	const loadUserProfile = useCallback(async () => {
 		try {
@@ -349,6 +362,7 @@ export function GuessifyGame() {
 		isPlayingRef.current = false;
 		hasPlayedRef.current = false;
 		currentSnippetPositionRef.current = 0; // Reset snippet position
+		currentLevelRef.current = null; // Reset level ref to avoid duration carryover
 		try { pause(); } catch {}
 		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
@@ -684,6 +698,8 @@ export function GuessifyGame() {
 		// Stop any playback immediately to prevent bleed into end screen or next round
 		clearPlaybackTimeout();
 		isPlayingRef.current = false;
+		currentSnippetPositionRef.current = 0;
+		currentLevelRef.current = null;
 		try { pause(); } catch {}
 		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
@@ -712,6 +728,9 @@ export function GuessifyGame() {
 			const currentLevel = GAME_LEVELS[currentRound.currentLevelIndex];
 			const pointsEarned = currentLevel.points;
 			
+			// Play celebration jingle (non-blocking)
+			try { celebrationRef.current?.currentTime = 0; celebrationRef.current?.play().catch(() => {}); } catch {}
+			
 			// Update stats
 			setGameStats(prev => {
 				const newScore = prev.currentScore + pointsEarned;
@@ -727,6 +746,12 @@ export function GuessifyGame() {
 			
 			setDebugInfo(`Correct! +${pointsEarned} points for ${currentLevel.name} level.`);
 			setButtonAnimation("correct");
+			
+			// Reset level/timer state to avoid carryover into next round
+			clearPlaybackTimeout();
+			isPlayingRef.current = false;
+			currentSnippetPositionRef.current = 0;
+			currentLevelRef.current = null;
 			
 			// End round and show end screen (with Next Round)
 			setEndScreenData({
@@ -911,7 +936,7 @@ export function GuessifyGame() {
 				</div>
 			)}
 
-			<div className="container mx-auto px-4 py-8 max-w-4xl relative z-10">
+			<div className="container mx-auto px-6 sm:px-8 lg:px-12 py-8 max-w-[1400px] w-full relative z-10">
 				{/* Game Header */}
 				<div className="text-center mb-8">
 					<h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent mb-4">
@@ -1229,23 +1254,6 @@ export function GuessifyGame() {
 									) : (
 										<>Final Score: <span className="text-white font-bold text-xl">{endScreenData.finalScore}</span> | Final Streak: <span className="text-white font-bold text-xl">{endScreenData.finalStreak}</span></>
 									)}
-								</div>
-							</div>
-							
-							{/* Debug Info for Artist Picture */}
-							<div className="mt-4 p-3 bg-gray-800/50 rounded-lg text-left">
-								<div className="text-xs text-gray-400 mb-2">🎨 Artist Picture Debug:</div>
-								<div className="text-xs text-gray-300 space-y-1">
-									<div>Track: {endScreenData.track.name}</div>
-									<div>Artist: {endScreenData.track.artist}</div>
-									<div>Artist ID: {endScreenData.track.artists?.[0]?.id || 'Missing'}</div>
-									<div>Has Album: {endScreenData.track.album ? 'Yes' : 'No'}</div>
-									<div>Album Images: {endScreenData.track.album?.images?.length || 0}</div>
-									<div>First Image URL: {endScreenData.track.album?.images?.[0]?.url ? 'Available' : 'Missing'}</div>
-									<div>Fetched Artist Image: {fetchedArtistImages[endScreenData.track.artist] ? 'Available' : 'Missing'}</div>
-									<div>Image Source: {endScreenData.track.album?.images?.[0]?.url ? 'Album' : fetchedArtistImages[endScreenData.track.artist] ? 'Artist API' : 'Fallback'}</div>
-									<div>Track Object Keys: {Object.keys(endScreenData.track).join(', ')}</div>
-									<div>Track Structure: {JSON.stringify(endScreenData.track, null, 2).substring(0, 200)}...</div>
 								</div>
 							</div>
 						</div>
