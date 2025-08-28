@@ -543,7 +543,16 @@ export function GuessifyGame() {
 			console.log("🔄 REPLAY: Using exact same snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
 		} else {
 			// First play or level change: generate new random position
-			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 5000))));
+			const maxPosition = Math.max(0, track.durationMs - (currentLevel.duration + 5000));
+			snippetPosition = Math.max(0, Math.floor(Math.random() * maxPosition));
+			
+			console.log("🎯 NEW: Generating snippet position:", {
+				trackDurationMs: track.durationMs,
+				levelDuration: currentLevel.duration,
+				maxPosition,
+				generatedPosition: snippetPosition
+			});
+			
 			// Store this position for this specific level
 			levelSnippetPositionsRef.current[currentRound.currentLevelIndex] = snippetPosition;
 			console.log("🎯 NEW: Generated snippet position:", snippetPosition, "for level", currentRound.currentLevelIndex);
@@ -576,13 +585,36 @@ export function GuessifyGame() {
 			isPlayingRef: isPlayingRef.current
 		});
 		
+		// Validate parameters before calling playSnippet
+		if (typeof snippetPosition !== 'number' || isNaN(snippetPosition) || snippetPosition < 0) {
+			console.error("🎵 Invalid snippetPosition:", snippetPosition);
+			setDebugInfo("Error: Invalid snippet position");
+			setAudioDebug("Invalid snippet position");
+			setGameState("waiting");
+			isPlayingRef.current = false;
+			return;
+		}
+		
+		if (typeof currentLevel.duration !== 'number' || isNaN(currentLevel.duration) || currentLevel.duration <= 0) {
+			console.error("🎵 Invalid currentLevel.duration:", currentLevel.duration);
+			setDebugInfo("Error: Invalid level duration");
+			setAudioDebug("Invalid level duration");
+			setGameState("waiting");
+			isPlayingRef.current = false;
+			return;
+		}
+		
 		try {
 			// Always try Spotify SDK first (works for all tracks)
 			if (isSdkAvailable) {
 				console.log("🎵 Using Spotify SDK for playback");
 				await connect();
 				console.log("🎵 Connected to Spotify, calling playSnippet...");
-				await playSnippet(track.uri, snippetPosition, currentLevel.duration);
+				await playSnippet({ 
+					uri: track.uri, 
+					startMs: snippetPosition, 
+					durationMs: currentLevel.duration 
+				});
 				console.log("🎵 playSnippet completed successfully");
 				return;
 			}
