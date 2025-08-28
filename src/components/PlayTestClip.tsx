@@ -729,7 +729,13 @@ export function GuessifyGame() {
 			const pointsEarned = currentLevel.points;
 			
 			// Play celebration jingle (non-blocking)
-			try { celebrationRef.current?.currentTime = 0; celebrationRef.current?.play().catch(() => {}); } catch {}
+			try {
+				const sfx = celebrationRef.current;
+				if (sfx) {
+					sfx.currentTime = 0;
+					void sfx.play().catch(() => {});
+				}
+			} catch {}
 			
 			// Update stats
 			setGameStats(prev => {
