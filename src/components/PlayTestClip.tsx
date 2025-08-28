@@ -276,6 +276,15 @@ export function GuessifyGame() {
 						console.log("SDK pause failed during timeout, but that's okay:", e);
 					}
 				});
+				// Safety hard-cap: ensure complete stop even if state event lags
+				setTimeout(() => {
+					if (!isPlayingRef.current) return;
+					console.log("⛔ Hard-cap stop enforcing exact duration");
+					isPlayingRef.current = false;
+					try { pause(); } catch {}
+					if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+					setGameState("guessing");
+				}, currentLevelRef.current.duration + 60);
 			} else {
 				console.log("GuessifyGame: State change ignored - conditions not met:", {
 					hasState: !!playerState,

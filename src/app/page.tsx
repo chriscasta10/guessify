@@ -1,10 +1,9 @@
 import { AuthButton } from "@/components/AuthButton";
-import { HelloUser } from "@/components/HelloUser";
 import { GuessifyGame } from "@/components/PlayTestClip";
 
 export default function Home() {
   return (
-    <div className="font-sans min-h-screen w-full bg-black">
+    <div className="font-sans min-h-screen w-full">
       {/* Top bar */}
       <div className="fixed top-4 left-4 z-50">
         <AuthButton />
@@ -22,7 +21,6 @@ export default function Home() {
         {/* Game */}
         <div className="w-full">
           <div className="w-full">
-            <HelloUser />
             <GuessifyGame />
           </div>
         </div>
