@@ -363,13 +363,14 @@ export function GuessifyGame() {
 					setDebugInfo("Failed to connect to Spotify SDK, trying preview URL fallback");
 					setAudioDebug("SDK connection failed, falling back to preview");
 				} else {
-					setAudioDebug("SDK connected successfully! Seeking and playing...");
-					console.log("SDK connected, attempting to seek and play");
+					setAudioDebug("SDK connected successfully! Waiting for device ID...");
+					console.log("SDK connected, waiting for device ID to be fully ready...");
+					
+					// CRITICAL FIX: Wait longer for device ID to be fully available
+					// This should eliminate the double-click requirement
+					await new Promise(resolve => setTimeout(resolve, 1000));
 					
 					try {
-						// CRITICAL FIX: Add longer delay to ensure device ID is fully available
-						await new Promise(resolve => setTimeout(resolve, 500));
-						
 						await seek(snippetPosition);
 						setAudioDebug("Seek successful, now playing...");
 						await play(track.uri, snippetPosition);
@@ -614,11 +615,11 @@ export function GuessifyGame() {
 
 			{/* User Profile Header */}
 			{userProfile && (
-				<div className="absolute top-4 right-4 flex items-center space-x-3 bg-black/50 backdrop-blur-sm rounded-full px-4 py-2 z-10">
+				<div className="fixed top-4 right-4 flex items-center space-x-3 bg-black/70 backdrop-blur-md rounded-full px-4 py-2 z-50 border border-white/20 shadow-2xl">
 					<img 
 						src={userProfile.images[0]?.url || '/default-avatar.png'} 
 						alt={userProfile.display_name}
-						className="w-8 h-8 rounded-full"
+						className="w-8 h-8 rounded-full ring-2 ring-white/30"
 					/>
 					<span className="text-sm font-medium text-white">{userProfile.display_name}</span>
 				</div>
@@ -826,32 +827,49 @@ export function GuessifyGame() {
 								{endScreenData.wasCorrect ? "🎉 Correct!" : "❌ Game Over"}
 							</div>
 							
-							{/* Artist Image and Track Info */}
-							<div className="flex items-center justify-center space-x-4 mb-4">
-								{endScreenData.track.album?.images?.[0]?.url && (
+							{/* CRITICAL FIX: Enhanced artist display with profile picture and cool UI */}
+							<div className="flex flex-col items-center justify-center space-y-4 mb-6">
+								{/* Artist Profile Picture - Large and centered */}
+								<div className="relative">
+									{/* Glowing background effect */}
+									<div className="absolute inset-0 bg-gradient-to-r from-green-500/30 to-blue-500/30 rounded-full blur-xl scale-150"></div>
+									
+									{/* Artist image with border and shadow */}
 									<img 
-										src={endScreenData.track.album.images[0].url} 
-										alt="Album Art"
-										className="w-16 h-16 rounded-lg shadow-lg"
+										src={endScreenData.track.album?.images?.[0]?.url || '/default-album.png'} 
+										alt="Artist/Album Art"
+										className="relative w-24 h-24 rounded-full ring-4 ring-white/20 shadow-2xl transform transition-all duration-500 hover:scale-110"
 									/>
-								)}
-								<div className="text-left">
-									<div className="text-lg font-semibold text-white">
+									
+									{/* Success checkmark overlay for correct guesses */}
+									{endScreenData.wasCorrect && (
+										<div className="absolute -top-2 -right-2 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-lg animate-pulse">
+											<span className="text-white text-lg">✓</span>
+										</div>
+									)}
+								</div>
+								
+								{/* Track and Artist Info */}
+								<div className="text-center">
+									<div className="text-xl font-bold text-white mb-2">
 										"{endScreenData.track.name}"
 									</div>
-									<div className="text-gray-300">
-										by {endScreenData.track.artist}
+									<div className="text-lg text-gray-300">
+										by <span className="text-blue-400 font-semibold">{endScreenData.track.artist}</span>
 									</div>
 								</div>
 							</div>
 							
-							<div className="text-gray-300">
-								{/* CRITICAL FIX: Say "Current" for correct guesses, "Final" for game over */}
-								{endScreenData.wasCorrect ? (
-									<>Current Score: <span className="text-white font-semibold">{endScreenData.finalScore}</span> | Current Streak: <span className="text-white font-semibold">{endScreenData.finalStreak}</span></>
-								) : (
-									<>Final Score: <span className="text-white font-semibold">{endScreenData.finalScore}</span> | Final Streak: <span className="text-white font-semibold">{endScreenData.finalStreak}</span></>
-								)}
+							{/* Score Display */}
+							<div className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur-sm p-4 rounded-xl border border-green-500/30">
+								<div className="text-gray-300 text-lg">
+									{/* CRITICAL FIX: Say "Current" for correct guesses, "Final" for game over */}
+									{endScreenData.wasCorrect ? (
+										<>Current Score: <span className="text-white font-bold text-xl">{endScreenData.finalScore}</span> | Current Streak: <span className="text-white font-bold text-xl">{endScreenData.finalStreak}</span></>
+									) : (
+										<>Final Score: <span className="text-white font-bold text-xl">{endScreenData.finalScore}</span> | Final Streak: <span className="text-white font-bold text-xl">{endScreenData.finalStreak}</span></>
+									)}
+								</div>
 							</div>
 						</div>
 						
@@ -867,7 +885,7 @@ export function GuessifyGame() {
 							) : (
 								<button
 									onClick={startNewRound}
-									className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105"
+									className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-3 rounded-xl font-semibold w-40 h-14 shadow-lg hover:shadow-blue-500/25 transition-all duration-300 transform hover:scale-105"
 								>
 									Next Round
 								</button>
