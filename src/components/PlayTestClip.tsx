@@ -407,8 +407,18 @@ export function GuessifyGame() {
 			return;
 		}
 
+		// CRITICAL FIX: Get the current level from the currentRound state, not from a ref
 		const currentLevel = GAME_LEVELS[currentRound.currentLevelIndex];
 		const track = currentRound.track;
+		
+		console.log("🎵 playCurrentLevel called with:", {
+			levelIndex: currentRound.currentLevelIndex,
+			levelName: currentLevel.name,
+			levelDuration: currentLevel.duration,
+			formattedDuration: formatTime(currentLevel.duration),
+			currentLevelRef: currentLevelRef.current?.name,
+			currentLevelRefDuration: currentLevelRef.current?.duration
+		});
 		
 		// CRITICAL FIX: Use stored snippet position for replay, or generate new one
 		let snippetPosition: number;
@@ -437,8 +447,9 @@ export function GuessifyGame() {
 		
 		isPlayingRef.current = true;
 		hasPlayedRef.current = true;
-		currentLevelRef.current = currentLevel; // Set current level for timeout listener
-
+		// CRITICAL FIX: Update the current level reference to match the current round
+		currentLevelRef.current = currentLevel;
+		
 		try {
 			// Always try Spotify SDK first (works for all tracks)
 			if (isSdkAvailable) {
@@ -634,6 +645,9 @@ export function GuessifyGame() {
 			// CRITICAL FIX: Reset snippet position for new level and auto-play immediately
 			currentSnippetPositionRef.current = 0; // Reset for new level
 			hasPlayedRef.current = false; // Reset play state
+			
+			// CRITICAL FIX: Update the current level reference to the new level
+			currentLevelRef.current = nextLevel;
 			
 			// Auto-play the new level after a short delay
 			setTimeout(() => {
