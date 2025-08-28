@@ -113,18 +113,31 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		stateChangeListenersRef.current.forEach(cb => { try { cb(newState); } catch {} });
 	}, [playerState]);
 
-	// Cleanup function for a specific request
+	// Clean up a specific request
 	const cleanupRequest = useCallback((requestId: number) => {
+		console.log("🎵 Cleaning up request:", requestId);
+		
+		// Clear timers
 		if (rafRef.current) {
 			cancelAnimationFrame(rafRef.current);
 			rafRef.current = null;
 		}
+		
 		if (pollIntervalRef.current) {
 			clearTimeout(pollIntervalRef.current);
 			pollIntervalRef.current = null;
 		}
+		
+		// Remove from requests map
 		playRequestsRef.current.delete(requestId);
-		trueStartTsRef.current = null;
+		
+		// If this was the current request, clear it
+		if (currentRequestRef.current === requestId) {
+			currentRequestRef.current = null;
+			
+			// Don't reset player state here - let the end event handle it
+			// The end event will set status to 'ended', and the UI can transition from there
+		}
 	}, []);
 
 	// Cancel all active requests
@@ -374,6 +387,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				try {
 					await playerRef.current?.pause();
 					console.log("⏹️ Snippet stopped after", durationMs, "ms");
+					
+					// Update player state to reflect snippet has ended
+					updatePlayerState({ 
+						status: 'ended', 
+						isPlaying: false, 
+						startTs: null,
+						durationMs: null,
+						progressMs: 0
+					});
+					
+					// Emit end event BEFORE cleanup to ensure it's not lost
+					snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
+					
+					// Resolve the promise
 					resolve();
 				} catch (err) {
 					console.error("❌ Error stopping snippet:", err);
@@ -387,7 +414,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				reject(new Error('Aborted'));
 			});
 		});
-	}, []);
+	}, [updatePlayerState]);
 
 	// Initialize Spotify SDK
 	const initPlayer = useCallback(async () => {
@@ -653,6 +680,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 	
 	const onSnippetEnd = useCallback((cb: () => void) => {
+		console.log("🎵 onSnippetEnd callback registered");
 		snippetEndListenersRef.current.push(cb);
 	}, []);
 	
