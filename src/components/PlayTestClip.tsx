@@ -423,10 +423,18 @@ export function GuessifyGame() {
 	const playCurrentLevelWithLevel = useCallback(async (specificLevel?: any) => {
 		if (!currentRound) return;
 
-		// Prevent multiple simultaneous plays
-		if (isPlayingRef.current) {
+		// Prevent multiple simultaneous plays unless this is an override for a new level
+		if (isPlayingRef.current && !specificLevel) {
 			console.log("Already playing, ignoring play request");
 			return;
+		}
+
+		// If overriding with a new level, force-stop current playback first
+		if (specificLevel) {
+			clearPlaybackTimeout();
+			isPlayingRef.current = false;
+			try { pause(); } catch {}
+			if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 		}
 
 		// CRITICAL FIX: Use the passed level OR get from currentRound state
@@ -1305,8 +1313,7 @@ export function GuessifyGame() {
 				)}
 				
 				<div className="text-xs text-gray-500 text-center mt-8">
-					Debug: {tracks.length} tracks, SDK: {isSdkAvailable ? 'Yes' : 'No'}, Loading: {loading ? 'Yes' : 'No'}
-					{error && `, Error: ${error}`}
+					Developed by Christopher Castaneda
 				</div>
 			</div>
 		</div>
