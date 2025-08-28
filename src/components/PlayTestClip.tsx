@@ -130,6 +130,8 @@ export function GuessifyGame() {
 			const artistId = track.artists?.[0]?.id;
 			const artistName = track.artists?.[0]?.name || track.artist;
 			
+			console.log("🎨 fetchArtistImage called for track:", track.name, "Artist:", artistName, "Artist ID:", artistId);
+			
 			if (artistId) {
 				// Use artist ID if available (preferred method)
 				console.log("🎨 Fetching artist image by ID for:", artistName, "ID:", artistId);
@@ -145,7 +147,7 @@ export function GuessifyGame() {
 						return imageUrl;
 					} else {
 						console.log("⚠️ Artist has no images:", artistName);
-						return null;
+						// Fall through to search method
 					}
 				} else {
 					console.error("❌ Failed to fetch artist data by ID:", response.status, response.statusText);
@@ -156,19 +158,44 @@ export function GuessifyGame() {
 			// Fallback: Search for artist by name when ID is not available
 			console.log("🎨 Falling back to artist search for:", artistName);
 			
-			const searchResponse = await fetch(`/api/spotify-search?q=${encodeURIComponent(artistName)}&type=artist&limit=1`);
+			// CRITICAL FIX: Use a more specific search query
+			const searchQuery = `${artistName} artist`;
+			console.log("🔍 Searching with query:", searchQuery);
+			
+			const searchResponse = await fetch(`/api/spotify-search?q=${encodeURIComponent(searchQuery)}&type=artist&limit=5`);
 			if (searchResponse.ok) {
 				const data = await searchResponse.json();
-				const artists = data.artists?.items;
+				console.log("🔍 Search response:", data);
 				
-				if (artists && artists.length > 0 && artists[0].images && artists[0].images.length > 0) {
-					const imageUrl = artists[0].images[0].url;
-					console.log("✅ Found artist image by search:", imageUrl);
-					return imageUrl;
-				} else {
-					console.log("⚠️ No artist images found by search for:", artistName);
-					return null;
+				const artists = data.artists?.items;
+				if (artists && artists.length > 0) {
+					console.log(`🔍 Found ${artists.length} artists in search results`);
+					
+					// Find the best match (exact name match first)
+					let bestMatch = null;
+					for (const artist of artists) {
+						console.log("🔍 Checking artist:", artist.name, "Images:", artist.images?.length || 0);
+						if (artist.images && artist.images.length > 0) {
+							if (artist.name.toLowerCase() === artistName.toLowerCase()) {
+								bestMatch = artist;
+								console.log("✅ Found exact name match:", artist.name);
+								break;
+							} else if (!bestMatch) {
+								bestMatch = artist;
+								console.log("✅ Found partial match:", artist.name);
+							}
+						}
+					}
+					
+					if (bestMatch && bestMatch.images && bestMatch.images.length > 0) {
+						const imageUrl = bestMatch.images[0].url;
+						console.log("✅ Found artist image by search:", imageUrl, "Artist:", bestMatch.name);
+						return imageUrl;
+					}
 				}
+				
+				console.log("⚠️ No artist images found by search for:", artistName);
+				return null;
 			} else {
 				console.error("❌ Failed to search for artist:", searchResponse.status, searchResponse.statusText);
 				return null;
@@ -538,9 +565,14 @@ export function GuessifyGame() {
 						console.log("🚨 PREVIEW TIMEOUT TRIGGERED - STOPPING AUDIO");
 						isPlayingRef.current = false;
 						
-						// CRITICAL FIX: Return to guessing state after timeout
-						setGameState("guessing");
-						setAudioDebug("🚨 PREVIEW TIMEOUT: Time's up - time to guess!");
+						// CRITICAL FIX: Only change state if we're still in playing mode
+						// This prevents conflicts with Give Up button
+						if (gameState === "playing") {
+							setGameState("guessing");
+							setAudioDebug("🚨 PREVIEW TIMEOUT: Time's up - time to guess!");
+						} else {
+							console.log("🚨 Timeout triggered but game state is already:", gameState);
+						}
 						
 						// Force stop preview audio
 						if (audioRef.current) {
@@ -585,13 +617,18 @@ export function GuessifyGame() {
 		
 		// Move to next level (longer clip)
 		if (currentRound.currentLevelIndex < GAME_LEVELS.length - 1) {
+			const nextLevelIndex = currentRound.currentLevelIndex + 1;
+			const nextLevel = GAME_LEVELS[nextLevelIndex];
+			
+			console.log(`Moving from level ${currentRound.currentLevelIndex} (${GAME_LEVELS[currentRound.currentLevelIndex].name}) to level ${nextLevelIndex} (${nextLevel.name})`);
+			console.log(`Duration changing from ${formatTime(GAME_LEVELS[currentRound.currentLevelIndex].duration)} to ${formatTime(nextLevel.duration)}`);
+			
 			setCurrentRound(prev => prev ? {
 				...prev,
-				currentLevelIndex: prev.currentLevelIndex + 1,
+				currentLevelIndex: nextLevelIndex,
 				attempts: prev.attempts + 1,
 			} : null);
 			
-			const nextLevel = GAME_LEVELS[currentRound.currentLevelIndex + 1];
 			setDebugInfo(`Level increased to ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
 			
 			// CRITICAL FIX: Reset snippet position for new level and auto-play immediately
@@ -656,6 +693,10 @@ export function GuessifyGame() {
 	const giveUp = useCallback(() => {
 		if (!currentRound) return;
 		
+		// CRITICAL FIX: Clear any active timeouts to prevent state conflicts
+		clearPlaybackTimeout();
+		isPlayingRef.current = false;
+		
 		// Give up - end run with 0 points, break streak
 		setGameStats(prev => ({
 			...prev,
@@ -668,8 +709,23 @@ export function GuessifyGame() {
 			track: currentRound.track,
 			wasCorrect: false,
 		});
+		
+		// CRITICAL FIX: Force game over state immediately
 		setGameState("gameOver");
-	}, [currentRound, gameStats.currentScore]);
+		
+		// CRITICAL FIX: Stop any playing audio
+		if (audioRef.current) {
+			audioRef.current.pause();
+			audioRef.current.currentTime = 0;
+		}
+		
+		// CRITICAL FIX: Force stop SDK playback
+		try {
+			pause();
+		} catch (e) {
+			console.log("SDK pause during give up failed:", e);
+		}
+	}, [currentRound, gameStats.currentScore, clearPlaybackTimeout, pause]);
 
 	const handleSearchSelect = useCallback((result: SearchResult) => {
 		setSelectedSearchResult(result);
