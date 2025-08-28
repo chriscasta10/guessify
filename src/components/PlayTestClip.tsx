@@ -124,86 +124,89 @@ export function GuessifyGame() {
 	}, [isSdkAvailable, connect]);
 
 	// CRITICAL FIX: Fetch artist image when album data is missing
-	const fetchArtistImage = useCallback(async (track: any) => {
-		try {
-			// Get artist ID from track object (this is the correct way)
-			const artistId = track.artists?.[0]?.id;
-			const artistName = track.artists?.[0]?.name || track.artist;
+	const fetchArtistImage = useCallback(async (track: any): Promise<string | null> => {
+		if (!track) return null;
+		
+		const artistName = track.artist;
+		console.log("🖼️ fetchArtistImage called for track:", {
+			trackId: track.id,
+			trackName: track.name,
+			artistName: artistName,
+			// ✅ NEW: Check if we have the new data fields
+			hasArtistsArray: !!track.artists,
+			artistsArray: track.artists,
+			hasAlbumData: !!track.album,
+			albumData: track.album,
+			// Legacy fields
+			hasPreview: track.hasPreview,
+			previewUrl: track.previewUrl
+		});
+		
+		// CRITICAL FIX: Check if we have the new data structure
+		if (track.artists && track.artists.length > 0 && track.artists[0].id) {
+			const artistId = track.artists[0].id;
+			console.log("🎯 Found artist ID:", artistId, "for artist:", track.artists[0].name);
 			
-			console.log("🎨 fetchArtistImage called for track:", track.name, "Artist:", artistName, "Artist ID:", artistId);
-			
-			if (artistId) {
-				// Use artist ID if available (preferred method)
-				console.log("🎨 Fetching artist image by ID for:", artistName, "ID:", artistId);
-				
+			try {
 				const response = await fetch(`/api/artists/${artistId}`);
 				if (response.ok) {
 					const artistData = await response.json();
-					const artistImages = artistData.images;
+					console.log("🎨 Artist API response:", artistData);
 					
-					if (artistImages && artistImages.length > 0) {
-						const imageUrl = artistImages[0].url;
-						console.log("✅ Found artist image by ID:", imageUrl);
+					if (artistData.images && artistData.images.length > 0) {
+						const imageUrl = artistData.images[0].url;
+						console.log("✅ Found artist image via ID:", imageUrl);
+						setFetchedArtistImages(prev => ({ ...prev, [artistName]: imageUrl }));
 						return imageUrl;
 					} else {
-						console.log("⚠️ Artist has no images:", artistName);
-						// Fall through to search method
+						console.log("⚠️ Artist API returned no images for ID:", artistId);
 					}
 				} else {
-					console.error("❌ Failed to fetch artist data by ID:", response.status, response.statusText);
-					// Fall through to search method
+					console.log("❌ Artist API failed for ID:", artistId, "Status:", response.status);
 				}
+			} catch (error) {
+				console.log("❌ Error fetching artist by ID:", error);
 			}
-			
-			// Fallback: Search for artist by name when ID is not available
-			console.log("🎨 Falling back to artist search for:", artistName);
-			
-			// CRITICAL FIX: Use a more specific search query
-			const searchQuery = `${artistName} artist`;
-			console.log("🔍 Searching with query:", searchQuery);
-			
-			const searchResponse = await fetch(`/api/spotify-search?q=${encodeURIComponent(searchQuery)}&type=artist&limit=5`);
-			if (searchResponse.ok) {
-				const data = await searchResponse.json();
-				console.log("🔍 Search response:", data);
+		} else {
+			console.log("⚠️ No artist ID available, falling back to search");
+		}
+		
+		// Fallback: search by artist name
+		console.log("🔍 Searching for artist by name:", artistName);
+		try {
+			const response = await fetch(`/api/spotify-search?q=${encodeURIComponent(artistName)} artist&type=artist&limit=5`);
+			if (response.ok) {
+				const searchData = await response.json();
+				console.log("🔍 Search results:", searchData);
 				
-				const artists = data.artists?.items;
-				if (artists && artists.length > 0) {
-					console.log(`🔍 Found ${artists.length} artists in search results`);
+				if (searchData.artists && searchData.artists.items && searchData.artists.items.length > 0) {
+					// Find best match
+					const bestMatch = searchData.artists.items.find((artist: any) => 
+						artist.name.toLowerCase() === artistName.toLowerCase()
+					) || searchData.artists.items[0];
 					
-					// Find the best match (exact name match first)
-					let bestMatch = null;
-					for (const artist of artists) {
-						console.log("🔍 Checking artist:", artist.name, "Images:", artist.images?.length || 0);
-						if (artist.images && artist.images.length > 0) {
-							if (artist.name.toLowerCase() === artistName.toLowerCase()) {
-								bestMatch = artist;
-								console.log("✅ Found exact name match:", artist.name);
-								break;
-							} else if (!bestMatch) {
-								bestMatch = artist;
-								console.log("✅ Found partial match:", artist.name);
-							}
-						}
-					}
+					console.log("🎯 Best artist match:", bestMatch);
 					
-					if (bestMatch && bestMatch.images && bestMatch.images.length > 0) {
+					if (bestMatch.images && bestMatch.images.length > 0) {
 						const imageUrl = bestMatch.images[0].url;
-						console.log("✅ Found artist image by search:", imageUrl, "Artist:", bestMatch.name);
+						console.log("✅ Found artist image via search:", imageUrl);
+						setFetchedArtistImages(prev => ({ ...prev, [artistName]: imageUrl }));
 						return imageUrl;
+					} else {
+						console.log("⚠️ Best match has no images");
 					}
+				} else {
+					console.log("❌ No search results found");
 				}
-				
-				console.log("⚠️ No artist images found by search for:", artistName);
-				return null;
 			} else {
-				console.error("❌ Failed to search for artist:", searchResponse.status, searchResponse.statusText);
-				return null;
+				console.log("❌ Search API failed, Status:", response.status);
 			}
 		} catch (error) {
-			console.error("❌ Error fetching artist image:", error);
-			return null;
+			console.log("❌ Error searching for artist:", error);
 		}
+		
+		console.log("❌ No artist image found, will use fallback emoji");
+		return null;
 	}, []);
 
 	useEffect(() => {
@@ -398,7 +401,8 @@ export function GuessifyGame() {
 		}
 	}, [tracks, loading, error, loadAll, clearPlaybackTimeout, hasStartedGame, preloadAudio]);
 
-	const playCurrentLevel = useCallback(async () => {
+	// CRITICAL FIX: New function that takes a specific level parameter
+	const playCurrentLevelWithLevel = useCallback(async (specificLevel?: any) => {
 		if (!currentRound) return;
 
 		// Prevent multiple simultaneous plays
@@ -407,11 +411,12 @@ export function GuessifyGame() {
 			return;
 		}
 
-		// CRITICAL FIX: Get the current level from the currentRound state, not from a ref
-		const currentLevel = GAME_LEVELS[currentRound.currentLevelIndex];
+		// CRITICAL FIX: Use the passed level OR get from currentRound state
+		const currentLevel = specificLevel || GAME_LEVELS[currentRound.currentLevelIndex];
 		const track = currentRound.track;
 		
-		console.log("🎵 playCurrentLevel called with:", {
+		console.log("🎵 playCurrentLevelWithLevel called with:", {
+			specificLevel: specificLevel?.name || "none",
 			levelIndex: currentRound.currentLevelIndex,
 			levelName: currentLevel.name,
 			levelDuration: currentLevel.duration,
@@ -425,12 +430,12 @@ export function GuessifyGame() {
 		
 		// CRITICAL FIX: Use stored snippet position for replay, or generate new one
 		let snippetPosition: number;
-		if (hasPlayedRef.current && currentSnippetPositionRef.current > 0) {
-			// Replay: use the same snippet position
+		if (hasPlayedRef.current && currentSnippetPositionRef.current > 0 && !specificLevel) {
+			// Replay: use the same snippet position (only if not changing levels)
 			snippetPosition = currentSnippetPositionRef.current;
 			console.log("Replaying same snippet at position:", snippetPosition);
 		} else {
-			// First play: generate new random position
+			// First play or level change: generate new random position
 			snippetPosition = Math.max(0, Math.floor(Math.random() * Math.max(0, track.durationMs - (currentLevel.duration + 3000))));
 			currentSnippetPositionRef.current = snippetPosition; // Store for replay
 			console.log("New snippet position:", snippetPosition);
@@ -626,6 +631,11 @@ export function GuessifyGame() {
 		}
 	}, [currentRound, connect, isSdkAvailable, pause, play, seek, startPlaybackTimeout, preloadAudio, gameState]);
 
+	// CRITICAL FIX: Use the new function that handles level parameters properly
+	const playCurrentLevel = useCallback(async () => {
+		await playCurrentLevelWithLevel();
+	}, [playCurrentLevelWithLevel]);
+
 	const nextLevel = useCallback(() => {
 		if (!currentRound) return;
 		
@@ -646,28 +656,23 @@ export function GuessifyGame() {
 			
 			setDebugInfo(`Level increased to ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
 			
-			// CRITICAL FIX: Reset snippet position for new level and auto-play immediately
+			// CRITICAL FIX: Reset snippet position for new level
 			currentSnippetPositionRef.current = 0; // Reset for new level
 			hasPlayedRef.current = false; // Reset play state
 			
 			// CRITICAL FIX: Update the current level reference to the new level
 			currentLevelRef.current = nextLevel;
 			
-			// CRITICAL FIX: Wait for state update, then play with new level
+			// CRITICAL FIX: Play the new level immediately with the correct duration
+			console.log(`🎵 Playing new level immediately: ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
+			
+			// Force play with the new level
 			setTimeout(() => {
-				// Double-check we have the updated level
-				const updatedRound = currentRound;
-				if (updatedRound) {
-					const currentLevel = GAME_LEVELS[updatedRound.currentLevelIndex];
-					console.log(`🎵 Auto-playing new level: ${currentLevel.name} (${formatTime(currentLevel.duration)})`);
-					
-					// Force update the level reference and play
-					currentLevelRef.current = currentLevel;
-					void playCurrentLevel();
-				}
-			}, 100); // Reduced delay for faster response
+				// CRITICAL FIX: Pass the new level directly instead of relying on state
+				void playCurrentLevelWithLevel(nextLevel);
+			}, 100);
 		}
-	}, [currentRound, playCurrentLevel]);
+	}, [currentRound]);
 
 	const submitGuess = useCallback(() => {
 		if (!currentRound || !selectedSearchResult) return;
