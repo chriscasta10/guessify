@@ -687,8 +687,25 @@ export function GuessifyGame() {
 		try { pause(); } catch {}
 		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
-		// Check if guess is correct
-		const isCorrect = selectedSearchResult.id === currentRound.track.id;
+		// Check if guess is correct (ID match first)
+		let isCorrect = selectedSearchResult.id === currentRound.track.id;
+		
+		// Fallback: strict title + primary artist match (case-insensitive, trimmed)
+		if (!isCorrect) {
+			const normalize = (s: string) => s.trim().toLowerCase();
+			const guessedName = normalize(selectedSearchResult.name);
+			const guessedArtist = normalize(selectedSearchResult.artist.split(',')[0] || selectedSearchResult.artist);
+			const trackName = normalize(currentRound.track.name);
+			const trackArtist = normalize((currentRound.track.artist || '').split(',')[0] || currentRound.track.artist || '');
+			isCorrect = guessedName === trackName && (!!trackArtist && guessedArtist === trackArtist);
+			console.log("submitGuess: ID mismatch, name/artist fallback:", {
+				guessedName,
+				trackName,
+				guessedArtist,
+				trackArtist,
+				result: isCorrect
+			});
+		}
 
 		if (isCorrect) {
 			// Award points for current level
@@ -711,7 +728,7 @@ export function GuessifyGame() {
 			setDebugInfo(`Correct! +${pointsEarned} points for ${currentLevel.name} level.`);
 			setButtonAnimation("correct");
 			
-			// End round and show end screen
+			// End round and show end screen (with Next Round)
 			setEndScreenData({
 				finalScore: gameStats.currentScore + pointsEarned,
 				finalStreak: gameStats.currentStreak + 1,
@@ -958,7 +975,7 @@ export function GuessifyGame() {
 
 				{/* Game Controls */}
 				{gameState === "waiting" && (
-					<div className="text-center space-y-6">
+					<div className="text-center space-y-6 max-w-2xl mx-auto w-full min-h-[360px]">
 						{!currentRound ? (
 							<button 
 								className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl text-xl w-64 h-16 shadow-lg hover:shadow-green-500/25 transition-all duration-300 transform hover:scale-105"
