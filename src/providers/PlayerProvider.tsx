@@ -13,6 +13,10 @@ type PlayerContextValue = {
 	// Add timeout management
 	startPlaybackTimeout: (durationMs: number, onTimeout: () => void) => void;
 	clearPlaybackTimeout: () => void;
+	// Authoritative snippet API
+	playSnippet: (uri: string, startMs: number, durationMs: number) => Promise<void>;
+	onSnippetStart: (cb: (durationMs: number) => void) => void;
+	onSnippetEnd: (cb: () => void) => void;
 };
 
 const PlayerContext = createContext<PlayerContextValue | undefined>(undefined);
@@ -28,6 +32,7 @@ declare global {
 				connect: () => Promise<boolean>;
 				addListener: (event: string, cb: (state: unknown) => void) => void;
 				_options?: { id?: string };
+				getCurrentState?: () => Promise<any>;
 			};
 		};
 		onSpotifyWebPlaybackSDKReady: () => void;
@@ -40,6 +45,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 	const [deviceId, setDeviceId] = useState<string>("");
 	const [listeners, setListeners] = useState<Array<(s: unknown) => void>>([]);
 	const playbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+	// Snippet authority state
+	const playRequestIdRef = useRef(0);
+	const snippetRafRef = useRef<number | null>(null);
+	const snippetStartListenersRef = useRef<Array<(d: number) => void>>([]);
+	const snippetEndListenersRef = useRef<Array<() => void>>([]);
 
 	const initPlayer = useCallback(async () => {
 		if (ready) return;
@@ -136,31 +147,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 				const isActuallyPlaying = playerState && !playerState.paused && !playerState.loading;
 				console.log("PlayerProvider: Derived is_playing status:", isActuallyPlaying);
 				
-				// Check if playback has started
-				if (isActuallyPlaying) {
-					console.log("PlayerProvider: Playback started! Notifying listeners...");
-					console.log("PlayerProvider: Number of listeners:", listeners.length);
-					// Notify all listeners that playback has started
-					listeners.forEach((l, index) => {
-						console.log(`PlayerProvider: Notifying listener ${index}`);
-						try {
-							l(state);
-						} catch (e) {
-							console.error(`PlayerProvider: Error in listener ${index}:`, e);
-						}
-					});
-				} else {
-					console.log("PlayerProvider: State change but not playing, still notifying listeners...");
-					// Still notify listeners for all state changes
-					listeners.forEach((l, index) => {
-						console.log(`PlayerProvider: Notifying listener ${index} for non-playing state`);
-						try {
-							l(state);
-						} catch (e) {
-							console.error(`PlayerProvider: Error in listener ${index}:`, e);
-						}
-					});
-				}
+				// Notify listeners for all state changes
+				listeners.forEach((l, index) => {
+					try { l(state); } catch (e) { console.error(`PlayerProvider: Error in listener ${index}:`, e); }
+				});
 			});
 			
 			// Create a promise to wait for the device ID
@@ -315,6 +305,51 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		setListeners((prev) => prev.concat(cb));
 	}, []);
 
+	// Snippet event subscriptions
+	const onSnippetStart = useCallback((cb: (d: number) => void) => {
+		snippetStartListenersRef.current.push(cb);
+	}, []);
+	const onSnippetEnd = useCallback((cb: () => void) => {
+		snippetEndListenersRef.current.push(cb);
+	}, []);
+
+	const cancelSnippetTimers = () => {
+		if (snippetRafRef.current) cancelAnimationFrame(snippetRafRef.current);
+		snippetRafRef.current = null;
+		clearPlaybackTimeout();
+	};
+
+	const playSnippet = useCallback(async (uri: string, startMs: number, durationMs: number) => {
+		const requestId = ++playRequestIdRef.current;
+		await seek(startMs);
+		await play(uri, startMs);
+		
+		const confirmStart = async () => {
+			if (requestId !== playRequestIdRef.current) return; // canceled
+			const state = await playerRef.current?.getCurrentState?.();
+			if (state && !state.paused && state.position >= startMs + 30) {
+				// Fire start
+				snippetStartListenersRef.current.forEach(cb => { try { cb(durationMs); } catch {} });
+				const trueStart = performance.now() + 75; // small cross-device buffer
+				const tick = async () => {
+					if (requestId !== playRequestIdRef.current) return; // canceled
+					const elapsed = performance.now() - trueStart;
+					if (elapsed >= durationMs - 40) {
+						await pause();
+						snippetEndListenersRef.current.forEach(cb => { try { cb(); } catch {} });
+						cancelSnippetTimers();
+						return;
+					}
+					snippetRafRef.current = requestAnimationFrame(tick);
+				};
+				snippetRafRef.current = requestAnimationFrame(tick);
+			} else {
+				setTimeout(confirmStart, 50);
+			}
+		};
+		confirmStart();
+	}, [pause, play, seek, clearPlaybackTimeout]);
+
 	const value: PlayerContextValue = {
 		initPlayer,
 		connect,
@@ -325,6 +360,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 		isSdkAvailable: ready,
 		startPlaybackTimeout,
 		clearPlaybackTimeout,
+		playSnippet,
+		onSnippetStart,
+		onSnippetEnd,
 	};
 
 	return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
