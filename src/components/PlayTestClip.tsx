@@ -589,7 +589,14 @@ export function GuessifyGame() {
 			console.error("🎵 Invalid snippetPosition:", snippetPosition);
 			setDebugInfo("Error: Invalid snippet position");
 			setAudioDebug("Invalid snippet position");
-			setGameState("waiting");
+			
+			// CRITICAL FIX: Don't change state if user has given up
+			if (!hasGivenUpRef.current) {
+				setGameState("waiting");
+			} else {
+				console.log("🏳️ User has given up, ignoring invalid snippet position error");
+			}
+			
 			isPlayingRef.current = false;
 			return;
 		}
@@ -598,7 +605,14 @@ export function GuessifyGame() {
 			console.error("🎵 Invalid currentLevel.duration:", currentLevel.duration);
 			setDebugInfo("Error: Invalid level duration");
 			setAudioDebug("Invalid level duration");
-			setGameState("waiting");
+			
+			// CRITICAL FIX: Don't change state if user has given up
+			if (!hasGivenUpRef.current) {
+				setGameState("waiting");
+			} else {
+				console.log("🏳️ User has given up, ignoring invalid level duration error");
+			}
+			
 			isPlayingRef.current = false;
 			return;
 		}
@@ -687,20 +701,41 @@ export function GuessifyGame() {
 					console.error("Error playing audio:", playError);
 					setDebugInfo(`Audio playback error: ${playError instanceof Error ? playError.message : 'Unknown error'}`);
 					setAudioDebug("Play error: " + (playError instanceof Error ? playError.message : 'Unknown'));
-					setGameState("waiting");
+					
+					// CRITICAL FIX: Don't change state if user has given up
+					if (!hasGivenUpRef.current) {
+						setGameState("waiting");
+					} else {
+						console.log("🏳️ User has given up, ignoring audio error state change");
+					}
+					
 					isPlayingRef.current = false;
 				}
 			} else {
 				setDebugInfo("No preview URL available for this track");
 				setAudioDebug("No preview URL - can't play this track");
-				setGameState("waiting");
+				
+				// CRITICAL FIX: Don't change state if user has given up
+				if (!hasGivenUpRef.current) {
+					setGameState("waiting");
+				} else {
+					console.log("🏳️ User has given up, ignoring preview URL error state change");
+				}
+				
 				isPlayingRef.current = false;
 			}
 		} catch (err) {
 			console.error("Error playing clip:", err);
 			setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
 			setAudioDebug("General error: " + (err instanceof Error ? err.message : 'Unknown'));
-			setGameState("waiting");
+			
+			// CRITICAL FIX: Don't change state if user has given up
+			if (!hasGivenUpRef.current) {
+				setGameState("waiting");
+			} else {
+				console.log("🏳️ User has given up, ignoring general error state change");
+			}
+			
 			isPlayingRef.current = false;
 		}
 	}, [currentRound, connect, isSdkAvailable, pause, playSnippet, gameState]);
@@ -1047,6 +1082,13 @@ export function GuessifyGame() {
 		console.log("🔍 Game state changed to:", gameState);
 		console.log("🔍 Current end screen data:", endScreenData);
 		console.log("🔍 Has given up flag:", hasGivenUpRef.current);
+		
+		// CRITICAL DEBUG: Track when state changes to 'waiting' unexpectedly
+		if (gameState === "waiting" && hasGivenUpRef.current) {
+			console.log("🚨 ALERT: Game state changed to 'waiting' while user has given up!");
+			console.log("🚨 This should not happen - investigating...");
+			console.trace("🚨 Stack trace for unexpected state change to 'waiting'");
+		}
 	}, [gameState, endScreenData]);
 	
 	useEffect(() => {
