@@ -1225,9 +1225,7 @@ export function GuessifyGame() {
 			<div className="mx-auto px-6 sm:px-10 lg:px-16 xl:px-24 py-8 w-full relative z-10">
 				{/* Game Header */}
 				<div className="text-center mb-8">
-					<h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent mb-4">
-						Guessify
-					</h1>
+					{/* REMOVED: Duplicate Guessify heading */}
 					{/* Cool Interactive Music Waveform - Replaces level progress indicator */}
 					<div className="flex items-center justify-center space-x-1">
 						{/* Animated sound wave bars that respond to game state */}
