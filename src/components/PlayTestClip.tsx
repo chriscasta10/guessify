@@ -1228,6 +1228,59 @@ export function GuessifyGame() {
 					<h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent mb-4">
 						🎵 Guessify
 					</h1>
+					{/* Cool Dynamic Level Progress Indicator - Replaces repetitive heading */}
+					<div className="flex items-center justify-center space-x-4">
+						{/* Level Progress Rings */}
+						{GAME_LEVELS.map((level, index) => (
+							<div key={level.name} className="relative">
+								{/* Progress Ring Background */}
+								<div className="w-12 h-12 rounded-full border-2 border-gray-600/30 flex items-center justify-center">
+									{/* Progress Ring Fill - Animated based on current level */}
+									<div 
+										className={`w-12 h-12 rounded-full border-2 transition-all duration-1000 ease-out ${
+											index < (currentRound?.currentLevelIndex || 0) 
+												? 'border-emerald-400/60' 
+												: index === (currentRound?.currentLevelIndex || 0)
+												? 'border-blue-400/80 animate-pulse'
+												: 'border-gray-500/20'
+										}`}
+										style={{
+											background: index === (currentRound?.currentLevelIndex || 0)
+												? 'conic-gradient(from 0deg, transparent, rgba(59, 130, 246, 0.3), transparent)'
+												: 'none'
+										}}
+									></div>
+									
+									{/* Level Icon/Text */}
+									<div className="absolute inset-0 flex items-center justify-center">
+										<span className={`text-xs font-bold ${
+											index === (currentRound?.currentLevelIndex || 0)
+												? 'text-blue-400'
+												: index < (currentRound?.currentLevelIndex || 0)
+												? 'text-emerald-400'
+												: 'text-gray-500'
+										}`}>
+											{level.name.charAt(0)}
+										</span>
+									</div>
+								</div>
+								
+								{/* Level Label */}
+								<div className="text-xs text-gray-400 mt-1 text-center">
+									{level.name}
+								</div>
+							</div>
+						))}
+					</div>
+					
+					{/* Current Level Info */}
+					{currentRound && (
+						<div className="mt-3 text-lg text-gray-300">
+							Current: <span className="text-white font-semibold">{getCurrentLevel()?.name}</span> 
+							<span className="text-gray-400"> • </span>
+							<span className="text-blue-400">{formatTime(getCurrentLevel()?.duration || 0)}</span>
+						</div>
+					)}
 				</div>
 
 				{/* Game Stats HUD */}
