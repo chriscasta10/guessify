@@ -441,7 +441,7 @@ export function GuessifyGame() {
 
 		// Load tracks on-demand if we don't have any
 		if (tracks.length === 0) {
-			setDebugInfo("Loading tracks...");
+			// Removed debug message - no longer needed
 			console.log("No tracks available, loading on-demand");
 			await loadAll();
 			// Wait a bit for tracks to load
@@ -449,7 +449,7 @@ export function GuessifyGame() {
 		}
 
 		if (tracks.length === 0) {
-			setDebugInfo("Still no tracks loaded");
+			// Removed debug message - no longer needed
 			console.log("Still no tracks available after loading");
 			return;
 		}
@@ -474,7 +474,7 @@ export function GuessifyGame() {
 		setSelectedSearchResult(null);
 		setGameState("waiting");
 		setHasStartedGame(true); // Mark that game has started
-		setDebugInfo("New round started! Click 'Play' to begin.");
+		// Removed debug message - no longer needed
 		
 		// CRITICAL FIX: Preload audio for instant playback
 		if (track.previewUrl) {
@@ -737,8 +737,6 @@ export function GuessifyGame() {
 				attempts: prev.attempts + 1,
 			} : null);
 			
-			setDebugInfo(`Level increased to ${nextLevel.name} (${formatTime(nextLevel.duration)})`);
-			
 			// CRITICAL FIX: Reset snippet position for new level
 			currentSnippetPositionRef.current = 0; // Reset for new level
 			hasPlayedRef.current = false; // Reset play state
@@ -819,7 +817,7 @@ export function GuessifyGame() {
 				};
 			});
 			
-			setDebugInfo(`Correct! +${pointsEarned} points for ${currentLevel.name} level.`);
+			// Removed debug message - no longer needed
 			setButtonAnimation("correct");
 			
 			// Reset level/timer state to avoid carryover into next round
@@ -912,7 +910,6 @@ export function GuessifyGame() {
 		setGameState("waiting");
 		setButtonAnimation("");
 		setHasStartedGame(false); // Reset game start state
-		setDebugInfo("New game started! Click 'Start Round' to begin.");
 	}, []);
 
 	const formatTime = (ms: number) => {
