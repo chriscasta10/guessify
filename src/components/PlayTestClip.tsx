@@ -1262,17 +1262,8 @@ export function GuessifyGame() {
 				<button 
 					onClick={() => {
 						console.log("🔑 Re-authorizing Spotify permissions");
-						// Generate re-authorization URL with show_dialog=true
-						const params = new URLSearchParams({
-							response_type: "code",
-							client_id: publicEnv.SPOTIFY_CLIENT_ID || "",
-							scope: "user-library-read streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state",
-							redirect_uri: publicEnv.SPOTIFY_REDIRECT_URI || "",
-							show_dialog: "true", // Force re-authorization
-						});
-						
-						const reauthUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
-						window.location.href = reauthUrl;
+						// Use the same login endpoint with force=true to ensure re-authorization dialog
+						window.location.href = "/api/auth/login?force=true";
 					}}
 					className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-medium text-sm shadow-lg hover:shadow-amber-500/25 transition-all duration-300 flex items-center space-x-2"
 				>

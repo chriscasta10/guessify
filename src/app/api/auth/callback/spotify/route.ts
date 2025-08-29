@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { env } from "@/lib/env";
-import { getCookie, setCookie } from "@/lib/cookies";
 
 type SpotifyTokenResponse = {
 	access_token: string;
@@ -14,8 +14,10 @@ export async function GET(request: Request) {
 	const { searchParams } = new URL(request.url);
 	const code = searchParams.get("code");
 	const state = searchParams.get("state");
-	const storedState = await getCookie("spotify_auth_state");
-	const verifier = await getCookie("spotify_pkce_verifier");
+	
+	const cookieStore = await cookies();
+	const storedState = cookieStore.get("spotify_auth_state")?.value;
+	const verifier = cookieStore.get("spotify_pkce_verifier")?.value;
 
 	// Debug logging
 	console.log("Callback received:", { 
@@ -23,7 +25,9 @@ export async function GET(request: Request) {
 		hasState: !!state, 
 		hasStoredState: !!storedState, 
 		hasVerifier: !!verifier,
-		stateMatch: state === storedState 
+		stateMatch: state === storedState,
+		redirectUri: env.SPOTIFY_REDIRECT_URI,
+		appUrl: env.APP_URL
 	});
 
 	if (!code || !state || !verifier || state !== storedState) {
@@ -44,6 +48,7 @@ export async function GET(request: Request) {
 		code_verifier: verifier,
 	});
 
+	console.log("Exchanging authorization code for token...");
 	const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
 		method: "POST",
 		headers: {
@@ -53,36 +58,49 @@ export async function GET(request: Request) {
 	});
 
 	if (!tokenRes.ok) {
-		console.log("Token exchange failed:", await tokenRes.text());
-		return NextResponse.redirect(`${env.APP_URL}/?error=token_exchange_failed`);
+		const errorText = await tokenRes.text();
+		console.log("Token exchange failed:", { status: tokenRes.status, error: errorText });
+		return NextResponse.redirect(`${env.APP_URL}/?error=token_exchange_failed&status=${tokenRes.status}`);
 	}
 
 	const json = (await tokenRes.json()) as SpotifyTokenResponse;
+	console.log("Token exchange successful:", { 
+		hasAccessToken: !!json.access_token, 
+		hasRefreshToken: !!json.refresh_token,
+		scope: json.scope,
+		expiresIn: json.expires_in
+	});
+	
 	const expiresAt = Date.now() + json.expires_in * 1000 - 30_000; // 30s skew
 
-	await setCookie("spotify_access_token", json.access_token, { 
+	// Set cookies using the same method as other routes
+	cookieStore.set("spotify_access_token", json.access_token, { 
 		maxAge: json.expires_in,
 		path: "/",
 		sameSite: "lax",
-		secure: true
+		secure: true,
+		httpOnly: true
 	});
-	await setCookie("spotify_refresh_token", json.refresh_token, { 
+	cookieStore.set("spotify_refresh_token", json.refresh_token, { 
 		maxAge: 60 * 60 * 24 * 30,
 		path: "/",
 		sameSite: "lax",
-		secure: true
+		secure: true,
+		httpOnly: true
 	});
-	await setCookie("spotify_token_expires_at", String(expiresAt), { 
+	cookieStore.set("spotify_token_expires_at", String(expiresAt), { 
 		maxAge: 60 * 60 * 24 * 30,
 		path: "/",
 		sameSite: "lax",
-		secure: true
+		secure: true,
+		httpOnly: true
 	});
 
 	// Clear the PKCE cookies after successful token exchange
-	await setCookie("spotify_pkce_verifier", "", { maxAge: 0, path: "/" });
-	await setCookie("spotify_auth_state", "", { maxAge: 0, path: "/" });
+	cookieStore.delete("spotify_pkce_verifier");
+	cookieStore.delete("spotify_auth_state");
 
+	console.log("Cookies set successfully, redirecting to app...");
 	return NextResponse.redirect(`${env.APP_URL}/`);
 }
 
