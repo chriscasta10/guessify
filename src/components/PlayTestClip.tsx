@@ -47,7 +47,7 @@ interface UserProfile {
 }
 
 export function GuessifyGame() {
-	const { initPlayer, connect, playSnippet, pause, seek, isSdkAvailable, onSnippetStart, onSnippetEnd, onStateChange } = usePlayer() as any;
+	const { initPlayer, connect, playSnippet, pause, seek, isSdkAvailable, onSnippetStart, onSnippetEnd, onStateChange, stop } = usePlayer() as any;
 	const { tracks, loadAll, loading, error, loadingProgress } = useLikedTracks(50);
 	const [gameState, setGameState] = useState<GameState>("waiting");
 	const [currentRound, setCurrentRound] = useState<RoundData | null>(null);
@@ -426,6 +426,7 @@ export function GuessifyGame() {
 		currentLevelRef.current = null; // Reset level ref to avoid duration carryover
 		// Clear all level snippet positions for new round
 		levelSnippetPositionsRef.current = {};
+		hasGivenUpRef.current = false; // Reset give up flag
 		try { pause(); } catch {}
 		if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
 
@@ -852,6 +853,11 @@ export function GuessifyGame() {
 	const giveUp = useCallback(() => {
 		if (!currentRound) return;
 		
+		console.log("🏳️ Give up clicked - terminating all playback immediately");
+		
+		// CRITICAL FIX: Set a flag to prevent any further state changes
+		hasGivenUpRef.current = true;
+		
 		// CRITICAL FIX: Clear any active timeouts to prevent state conflicts
 		// clearPlaybackTimeout(); // No longer needed as provider handles timeouts
 		clearHardCapTimeout();
@@ -859,6 +865,13 @@ export function GuessifyGame() {
 		currentSnippetPositionRef.current = 0;
 		currentLevelRef.current = null;
 		stopProgress();
+		
+		// CRITICAL FIX: Stop all PlayerProvider playback immediately
+		try {
+			stop(); // This should cancel all active requests
+		} catch (e) {
+			console.log("PlayerProvider stop during give up failed:", e);
+		}
 		
 		// Play wrong SFX
 		playSfx(wrongSfxRef);
@@ -891,7 +904,7 @@ export function GuessifyGame() {
 		} catch (e) {
 			console.log("SDK pause during give up failed:", e);
 		}
-	}, [currentRound, gameStats.currentScore, clearHardCapTimeout, pause]);
+	}, [currentRound, gameStats.currentScore, clearHardCapTimeout, pause, stop]);
 
 	const handleSearchSelect = useCallback((result: SearchResult) => {
 		setSelectedSearchResult(result);
@@ -910,6 +923,7 @@ export function GuessifyGame() {
 		setGameState("waiting");
 		setButtonAnimation("");
 		setHasStartedGame(false); // Reset game start state
+		hasGivenUpRef.current = false; // Reset give up flag
 	}, []);
 
 	const formatTime = (ms: number) => {
@@ -934,6 +948,7 @@ export function GuessifyGame() {
 	const progressTotalRef = useRef(0);
 	const progressStartRef = useRef<number | null>(null);
 	const rafRef = useRef<number | null>(null);
+	const hasGivenUpRef = useRef(false);
 	const stopProgress = () => {
 		if (rafRef.current) cancelAnimationFrame(rafRef.current);
 		rafRef.current = null;
@@ -968,6 +983,13 @@ export function GuessifyGame() {
 		
 		const handleSnippetEnd = () => {
 			console.log("🎵 Snippet end event received, current gameState:", gameState);
+			
+			// CRITICAL FIX: Don't change state if user has given up
+			if (hasGivenUpRef.current) {
+				console.log("🏳️ User has given up, ignoring snippet end event");
+				return;
+			}
+			
 			isPlayingRef.current = false;
 			// Clamp at end but keep bar rendered until next start
 			setProgressMs(progressTotalRef.current);
