@@ -129,11 +129,36 @@ export function useLikedTracks(limit = 50) { // Spotify API max limit is 50
 			// Try to parse the error for better debugging
 			try {
 				const errorJson = JSON.parse(errorText);
+				
+				// Handle scope-related errors
+				if (errorJson.error === "insufficient_scopes") {
+					const missingScopes = errorJson.missingScopes || [];
+					const reauthUrl = errorJson.reauthUrl;
+					
+					if (reauthUrl) {
+						// Redirect to re-authorization
+						window.location.href = reauthUrl;
+						throw new Error("Redirecting to re-authorize Spotify permissions...");
+					} else {
+						throw new Error(`Missing Spotify permissions: ${missingScopes.join(", ")}. Please sign out and sign in again.`);
+					}
+				}
+				
+				// Handle other specific errors
 				if (errorJson.error && errorJson.error.includes("Spotify API error: 400")) {
 					throw new Error("Spotify API limit exceeded - reducing batch size");
 				}
+				
+				if (res.status === 403) {
+					throw new Error("Access denied - your Spotify account may not have permission to read liked tracks. Please check your account settings.");
+				}
+				
+				if (res.status === 401) {
+					throw new Error("Authentication failed - please sign in to Spotify again.");
+				}
+				
 			} catch (parseError) {
-				// Continue with original error
+				// Continue with original error if parsing fails
 			}
 			
 			throw new Error(`Failed to fetch: ${res.status} - ${errorText}`);

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { usePlayer } from "@/providers/PlayerProvider";
 import { SearchAutocomplete } from "@/components/SearchAutocomplete";
+import { publicEnv } from "@/lib/env";
 
 // Level-based round system: one song progresses through difficulty levels
 interface GameLevel {
@@ -172,9 +173,45 @@ export function GuessifyGame() {
 	const loadUserProfile = useCallback(async () => {
 		try {
 			const response = await fetch('/api/me');
+			
 			if (response.ok) {
 				const profile = await response.json();
 				setUserProfile(profile);
+			} else {
+				// Handle different error types
+				const errorText = await response.text();
+				let errorMessage = "Failed to load user profile";
+				
+				try {
+					const errorJson = JSON.parse(errorText);
+					
+					if (errorJson.error === "insufficient_scopes") {
+						const missingScopes = errorJson.missingScopes || [];
+						const reauthUrl = errorJson.reauthUrl;
+						
+						if (reauthUrl) {
+							errorMessage = `Missing Spotify permissions: ${missingScopes.join(", ")}. Redirecting to re-authorize...`;
+							console.log("Redirecting to re-authorize Spotify permissions:", reauthUrl);
+							// Redirect after a short delay to show the message
+							setTimeout(() => {
+								window.location.href = reauthUrl;
+							}, 2000);
+						} else {
+							errorMessage = `Missing Spotify permissions: ${missingScopes.join(", ")}. Please sign out and sign in again.`;
+						}
+					} else if (response.status === 403) {
+						errorMessage = "Access denied - your Spotify account may not have permission to read profile data.";
+					} else if (response.status === 401) {
+						errorMessage = "Authentication failed - please sign in to Spotify again.";
+					} else {
+						errorMessage = `Profile loading failed: ${response.status} - ${errorJson.error || errorText}`;
+					}
+				} catch (parseError) {
+					errorMessage = `Profile loading failed: ${response.status} - ${errorText}`;
+				}
+				
+				console.error('Failed to load user profile:', errorMessage);
+				// You could set an error state here to show the user
 			}
 		} catch (error) {
 			console.error('Failed to load user profile:', error);
@@ -1197,7 +1234,7 @@ export function GuessifyGame() {
 			)}
 
 			{/* Refresh Liked Songs Button - Top Left */}
-			<div className="fixed top-16 left-4 z-50">
+			<div className="fixed top-16 left-4 z-50 space-y-2">
 				<button 
 					onClick={() => {
 						console.log("🔄 Manual refresh of liked songs requested");
@@ -1219,6 +1256,30 @@ export function GuessifyGame() {
 							<span>Refresh Songs</span>
 						</>
 					)}
+				</button>
+				
+				{/* Re-authorize Button - Shows when there are scope issues */}
+				<button 
+					onClick={() => {
+						console.log("🔑 Re-authorizing Spotify permissions");
+						// Generate re-authorization URL with show_dialog=true
+						const params = new URLSearchParams({
+							response_type: "code",
+							client_id: publicEnv.SPOTIFY_CLIENT_ID || "",
+							scope: "user-library-read streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state",
+							redirect_uri: publicEnv.SPOTIFY_REDIRECT_URI || "",
+							show_dialog: "true", // Force re-authorization
+						});
+						
+						const reauthUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
+						window.location.href = reauthUrl;
+					}}
+					className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-medium text-sm shadow-lg hover:shadow-amber-500/25 transition-all duration-300 flex items-center space-x-2"
+				>
+					<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+					</svg>
+					<span>Fix Permissions</span>
 				</button>
 			</div>
 
