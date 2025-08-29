@@ -1102,63 +1102,63 @@ export function GuessifyGame() {
 			{/* Background Design Elements - Full Screen Coverage */}
 			{/* Left Side - Extended Coverage */}
 			<div className="absolute left-0 top-0 w-1/3 h-full">
-				<div className="absolute left-4 top-16 w-40 h-40 bg-gradient-to-br from-green-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-20 top-48 w-32 h-32 bg-gradient-to-br from-blue-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-8 top-80 w-24 h-24 bg-gradient-to-br from-purple-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-28 top-[400px] w-20 h-20 bg-gradient-to-br from-yellow-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-12 top-[600px] w-36 h-36 bg-gradient-to-br from-green-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute left-32 top-[700px] w-28 h-28 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-4 top-16 w-40 h-40 bg-gradient-to-br from-green-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-20 top-48 w-32 h-32 bg-gradient-to-br from-blue-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-8 top-80 w-24 h-24 bg-gradient-to-br from-purple-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-28 top-[400px] w-20 h-20 bg-gradient-to-br from-yellow-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-12 top-[600px] w-36 h-36 bg-gradient-to-br from-green-400/20 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute left-32 top-[700px] w-28 h-28 bg-gradient-to-br from-blue-400/20 to-transparent rounded-full blur-3xl"></div>
 			</div>
 
 			{/* Right Side - Extended Coverage */}
 			<div className="absolute right-0 top-0 w-1/3 h-full">
-				<div className="absolute right-4 top-20 w-36 h-36 bg-gradient-to-bl from-green-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-24 top-64 w-28 h-28 bg-gradient-to-bl from-blue-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-8 top-[350px] w-32 h-32 bg-gradient-to-bl from-purple-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-28 top-[500px] w-24 h-24 bg-gradient-to-bl from-yellow-500/15 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-12 top-[650px] w-40 h-40 bg-gradient-to-bl from-green-500/10 to-transparent rounded-full blur-3xl"></div>
-				<div className="absolute right-32 top-[750px] w-20 h-20 bg-gradient-to-bl from-blue-500/10 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-4 top-20 w-36 h-36 bg-gradient-to-bl from-green-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-24 top-64 w-28 h-28 bg-gradient-to-bl from-blue-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-8 top-[350px] w-32 h-32 bg-gradient-to-bl from-purple-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-28 top-[500px] w-24 h-24 bg-gradient-to-bl from-yellow-400/25 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-12 top-[650px] w-40 h-40 bg-gradient-to-bl from-green-400/20 to-transparent rounded-full blur-3xl"></div>
+				<div className="absolute right-32 top-[750px] w-20 h-20 bg-gradient-to-bl from-blue-400/20 to-transparent rounded-full blur-3xl"></div>
 			</div>
 
 			{/* Top Section - Extended Coverage */}
 			<div className="absolute top-0 left-0 w-full h-1/3">
-				<div className="absolute left-1/4 top-8 w-24 h-24 bg-gradient-to-b from-purple-500/10 to-transparent rounded-full blur-2xl"></div>
-				<div className="absolute right-1/4 top-16 w-20 h-20 bg-gradient-to-b from-blue-500/10 to-transparent rounded-full blur-2xl"></div>
-				<div className="absolute left-1/3 top-24 w-16 h-16 bg-gradient-to-b from-green-500/10 to-transparent rounded-full blur-2xl"></div>
-				<div className="absolute right-1/3 top-32 w-28 h-28 bg-gradient-to-b from-yellow-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute left-1/4 top-8 w-24 h-24 bg-gradient-to-b from-purple-400/20 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/4 top-16 w-20 h-20 bg-gradient-to-b from-blue-400/20 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute left-1/3 top-24 w-16 h-16 bg-gradient-to-b from-green-400/20 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/3 top-32 w-28 h-28 bg-gradient-to-b from-yellow-400/20 to-transparent rounded-full blur-2xl"></div>
 			</div>
 
 			{/* Bottom Section - Extended Coverage */}
 			<div className="absolute bottom-0 left-0 w-full h-1/3">
-				<div className="absolute left-1/4 bottom-16 w-32 h-32 bg-gradient-to-t from-green-500/10 to-transparent rounded-full blur-2xl"></div>
-				<div className="absolute right-1/4 bottom-24 w-24 h-24 bg-gradient-to-t from-blue-500/10 to-transparent rounded-full blur-2xl"></div>
-				<div className="absolute left-1/3 bottom-32 w-20 h-20 bg-gradient-to-t from-purple-500/10 to-transparent rounded-full blur-2xl"></div>
-				<div className="absolute right-1/3 bottom-40 w-36 h-36 bg-gradient-to-t from-yellow-500/10 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute left-1/4 bottom-16 w-32 h-32 bg-gradient-to-t from-green-400/20 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/4 bottom-24 w-24 h-24 bg-gradient-to-t from-yellow-400/20 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute left-1/3 bottom-32 w-20 h-20 bg-gradient-to-t from-purple-400/20 to-transparent rounded-full blur-2xl"></div>
+				<div className="absolute right-1/3 bottom-40 w-36 h-36 bg-gradient-to-t from-blue-400/20 to-transparent rounded-full blur-2xl"></div>
 			</div>
 
 			{/* Center Background Elements */}
 			<div className="absolute inset-0 flex items-center justify-center pointer-events-none">
 				<div className="w-full max-w-6xl h-full relative">
 					{/* Center left */}
-					<div className="absolute left-8 top-1/4 w-16 h-16 bg-gradient-to-r from-green-500/5 to-transparent rounded-full blur-xl"></div>
-					<div className="absolute left-16 top-3/4 w-12 h-12 bg-gradient-to-r from-blue-500/5 to-transparent rounded-full blur-xl"></div>
+					<div className="absolute left-8 top-1/4 w-16 h-16 bg-gradient-to-r from-green-400/15 to-transparent rounded-full blur-xl"></div>
+					<div className="absolute left-16 top-3/4 w-12 h-12 bg-gradient-to-r from-blue-400/15 to-transparent rounded-full blur-xl"></div>
 					
 					{/* Center right */}
-					<div className="absolute right-8 top-1/3 w-20 h-20 bg-gradient-to-l from-purple-500/5 to-transparent rounded-full blur-xl"></div>
-					<div className="absolute right-16 top-2/3 w-14 h-14 bg-gradient-to-l from-yellow-500/5 to-transparent rounded-full blur-xl"></div>
+					<div className="absolute right-8 top-1/3 w-20 h-20 bg-gradient-to-l from-purple-400/15 to-transparent rounded-full blur-xl"></div>
+					<div className="absolute right-16 top-2/3 w-14 h-14 bg-gradient-to-l from-yellow-400/15 to-transparent rounded-full blur-xl"></div>
 				</div>
 			</div>
 
 			{/* Floating Music Notes - Extended Coverage */}
 			<div className="absolute inset-0 pointer-events-none">
-				<div className="absolute left-8 top-1/4 text-4xl text-green-500/20 animate-bounce">♪</div>
-				<div className="absolute right-12 top-1/3 text-3xl text-blue-500/20 animate-pulse">♫</div>
-				<div className="absolute left-1/3 bottom-1/4 text-2xl text-purple-500/20 animate-bounce">♩</div>
-				<div className="absolute right-1/4 bottom-1/3 text-3xl text-yellow-500/20 animate-pulse">♪</div>
-				<div className="absolute left-1/2 top-1/6 text-2xl text-green-500/15 animate-pulse">♫</div>
-				<div className="absolute right-1/2 bottom-1/6 text-3xl text-blue-500/15 animate-bounce">♪</div>
-				<div className="absolute left-1/6 top-1/2 text-2xl text-purple-500/15 animate-bounce">♩</div>
-				<div className="absolute right-1/6 top-1/2 text-2xl text-yellow-500/15 animate-pulse">♫</div>
+				<div className="absolute left-8 top-1/4 text-4xl text-green-400/30 animate-bounce">♪</div>
+				<div className="absolute right-12 top-1/3 text-3xl text-blue-400/30 animate-pulse">♫</div>
+				<div className="absolute left-1/3 bottom-1/4 text-2xl text-purple-400/30 animate-bounce">♩</div>
+				<div className="absolute right-1/4 bottom-1/3 text-3xl text-yellow-400/30 animate-pulse">♪</div>
+				<div className="absolute left-1/2 top-1/6 text-2xl text-green-400/25 animate-pulse">♫</div>
+				<div className="absolute right-1/2 bottom-1/6 text-3xl text-blue-400/25 animate-bounce">♪</div>
+				<div className="absolute left-1/6 top-1/2 text-2xl text-purple-400/25 animate-bounce">♩</div>
+				<div className="absolute right-1/6 top-1/2 text-2xl text-yellow-400/25 animate-pulse">♫</div>
 			</div>
 
 			{/* Subtle Grid Pattern Overlay */}
@@ -1216,7 +1216,6 @@ export function GuessifyGame() {
 					<h1 className="text-5xl font-bold bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent mb-4">
 						🎵 Guessify
 					</h1>
-					<p className="text-gray-300 text-lg">Test your music memory with your Spotify likes!</p>
 				</div>
 
 				{/* Game Stats HUD */}
@@ -1566,15 +1565,44 @@ export function GuessifyGame() {
 				)}
 
 				{/* Debug Info - Only show non-spoiler info */}
-				{debugInfo && (
-					<div className="text-sm text-gray-400 bg-black/30 backdrop-blur-sm p-4 rounded-xl border border-gray-700 mt-8">
-						{debugInfo}
-					</div>
-				)}
+				{/* REMOVED: Debug info box that was showing error messages */}
 				
 				{audioDebug && (
 					<></>
 				)}
+				
+				{/* Cool UI/UX Feature Design - Replaces the duplicate heading */}
+				<div className="text-center space-y-6 mt-8">
+					{/* Animated Music Visualizer */}
+					<div className="flex items-center justify-center space-x-2">
+						{/* Animated bars that pulse with different colors */}
+						<div className="w-2 h-8 bg-gradient-to-t from-emerald-400 to-emerald-600 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></div>
+						<div className="w-2 h-12 bg-gradient-to-t from-blue-400 to-blue-600 rounded-full animate-pulse" style={{ animationDelay: '200ms' }}></div>
+						<div className="w-2 h-10 bg-gradient-to-t from-purple-400 to-purple-600 rounded-full animate-pulse" style={{ animationDelay: '400ms' }}></div>
+						<div className="w-2 h-14 bg-gradient-to-t from-pink-400 to-pink-600 rounded-full animate-pulse" style={{ animationDelay: '600ms' }}></div>
+						<div className="w-2 h-8 bg-gradient-to-t from-yellow-400 to-yellow-600 rounded-full animate-pulse" style={{ animationDelay: '800ms' }}></div>
+					</div>
+					
+					{/* Floating Achievement Badges */}
+					<div className="flex items-center justify-center space-x-4">
+						<div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 backdrop-blur-sm p-3 rounded-full border border-green-500/30 transform hover:scale-110 transition-all duration-300">
+							<span className="text-2xl">🏆</span>
+						</div>
+						<div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 backdrop-blur-sm p-3 rounded-full border border-blue-500/30 transform hover:scale-110 transition-all duration-300">
+							<span className="text-2xl">🎯</span>
+						</div>
+						<div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur-sm p-3 rounded-full border border-purple-500/30 transform hover:scale-110 transition-all duration-300">
+							<span className="text-2xl">⚡</span>
+						</div>
+					</div>
+					
+					{/* Dynamic Stats Display */}
+					<div className="bg-gradient-to-r from-white/10 to-white/5 backdrop-blur-sm p-4 rounded-xl border border-white/20">
+						<div className="text-sm text-gray-300">
+							<span className="text-emerald-400 font-semibold">🎵</span> Test your music memory with your Spotify likes!
+						</div>
+					</div>
+				</div>
 				
 				<div className="text-xs text-gray-500 text-center mt-8">
 					Developed by Christopher Castaneda
