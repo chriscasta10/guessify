@@ -854,6 +854,8 @@ export function GuessifyGame() {
 		if (!currentRound) return;
 		
 		console.log("🏳️ Give up clicked - terminating all playback immediately");
+		console.log("🏳️ Current game state before give up:", gameState);
+		console.log("🏳️ Current end screen data before give up:", endScreenData);
 		
 		// CRITICAL FIX: Set a flag to prevent any further state changes
 		hasGivenUpRef.current = true;
@@ -871,6 +873,13 @@ export function GuessifyGame() {
 			stop(); // This should cancel all active requests
 		} catch (e) {
 			console.log("PlayerProvider stop during give up failed:", e);
+		}
+		
+		// CRITICAL FIX: If audio is currently playing, we need to prevent the snippet end event
+		// from overriding our game over state. The PlayerProvider should handle this, but
+		// we'll also set a flag to ensure the event is ignored.
+		if (isPlayingRef.current) {
+			console.log("🏳️ Audio was playing - ensuring snippet end event is ignored");
 		}
 		
 		// Play wrong SFX
@@ -909,7 +918,15 @@ export function GuessifyGame() {
 		} catch (e) {
 			console.log("SDK pause during give up failed:", e);
 		}
-	}, [currentRound, gameStats.currentScore, clearHardCapTimeout, pause, stop]);
+		
+		// CRITICAL FIX: Log the final state after a short delay to see if it was set
+		setTimeout(() => {
+			console.log("🏳️ Final state check after give up:");
+			console.log("🏳️ Game state:", gameState);
+			console.log("🏳️ End screen data:", endScreenData);
+			console.log("🏳️ Has given up flag:", hasGivenUpRef.current);
+		}, 100);
+	}, [currentRound, gameStats.currentScore, clearHardCapTimeout, pause, stop, gameState, endScreenData]);
 
 	const handleSearchSelect = useCallback((result: SearchResult) => {
 		setSelectedSearchResult(result);
@@ -995,6 +1012,12 @@ export function GuessifyGame() {
 				return;
 			}
 			
+			// CRITICAL FIX: Don't change state if we're already in game over state
+			if (gameState === "gameOver") {
+				console.log("🏳️ Already in game over state, ignoring snippet end event");
+				return;
+			}
+			
 			isPlayingRef.current = false;
 			// Clamp at end but keep bar rendered until next start
 			setProgressMs(progressTotalRef.current);
@@ -1014,11 +1037,15 @@ export function GuessifyGame() {
 	// Debug state changes
 	useEffect(() => {
 		console.log("🔍 Game state changed to:", gameState);
-	}, [gameState]);
+		console.log("🔍 Current end screen data:", endScreenData);
+		console.log("🔍 Has given up flag:", hasGivenUpRef.current);
+	}, [gameState, endScreenData]);
 	
 	useEffect(() => {
 		console.log("🔍 End screen data changed:", endScreenData);
-	}, [endScreenData]);
+		console.log("🔍 Current game state:", gameState);
+		console.log("🔍 Has given up flag:", hasGivenUpRef.current);
+	}, [endScreenData, gameState]);
 
 	return (
 		<div className="min-h-screen w-full bg-transparent text-white relative overflow-hidden">
