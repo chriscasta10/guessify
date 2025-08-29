@@ -882,14 +882,19 @@ export function GuessifyGame() {
 			currentStreak: 0,
 		}));
 		
-		setEndScreenData({
+		// CRITICAL FIX: Set end screen data first, then game state
+		const endData = {
 			finalScore: gameStats.currentScore,
 			finalStreak: 0,
 			track: currentRound.track,
 			wasCorrect: false,
-		});
+		};
+		
+		console.log("🏳️ Setting end screen data:", endData);
+		setEndScreenData(endData);
 		
 		// CRITICAL FIX: Force game over state immediately
+		console.log("🏳️ Setting game state to gameOver");
 		setGameState("gameOver");
 		
 		// CRITICAL FIX: Stop any playing audio
@@ -1005,6 +1010,15 @@ export function GuessifyGame() {
 			// This effect should only run once on mount
 		};
 	}, [onSnippetStart, onSnippetEnd]); // Remove gameState dependency
+
+	// Debug state changes
+	useEffect(() => {
+		console.log("🔍 Game state changed to:", gameState);
+	}, [gameState]);
+	
+	useEffect(() => {
+		console.log("🔍 End screen data changed:", endScreenData);
+	}, [endScreenData]);
 
 	return (
 		<div className="min-h-screen w-full bg-transparent text-white relative overflow-hidden">
