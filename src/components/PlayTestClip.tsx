@@ -856,9 +856,11 @@ export function GuessifyGame() {
 		console.log("🏳️ Give up clicked - terminating all playback immediately");
 		console.log("🏳️ Current game state before give up:", gameState);
 		console.log("🏳️ Current end screen data before give up:", endScreenData);
+		console.log("🏳️ Current round:", currentRound);
 		
 		// CRITICAL FIX: Set a flag to prevent any further state changes
 		hasGivenUpRef.current = true;
+		console.log("🏳️ Set hasGivenUpRef to true");
 		
 		// CRITICAL FIX: Clear any active timeouts to prevent state conflicts
 		// clearPlaybackTimeout(); // No longer needed as provider handles timeouts
@@ -871,6 +873,7 @@ export function GuessifyGame() {
 		// CRITICAL FIX: Stop all PlayerProvider playback immediately
 		try {
 			stop(); // This should cancel all active requests
+			console.log("🏳️ PlayerProvider stop() called successfully");
 		} catch (e) {
 			console.log("PlayerProvider stop during give up failed:", e);
 		}
@@ -886,10 +889,13 @@ export function GuessifyGame() {
 		playSfx(wrongSfxRef);
 		
 		// Give up - end run with 0 points, break streak
-		setGameStats(prev => ({
-			...prev,
-			currentStreak: 0,
-		}));
+		setGameStats(prev => {
+			console.log("🏳️ Updating game stats, current score:", prev.currentScore);
+			return {
+				...prev,
+				currentStreak: 0,
+			};
+		});
 		
 		// CRITICAL FIX: Set end screen data first, then game state
 		const endData = {
@@ -899,12 +905,14 @@ export function GuessifyGame() {
 			wasCorrect: false,
 		};
 		
-		console.log("🏳️ Setting end screen data:", endData);
+		console.log("🏳️ About to set end screen data:", endData);
 		setEndScreenData(endData);
+		console.log("🏳️ setEndScreenData called");
 		
 		// CRITICAL FIX: Force game over state immediately
-		console.log("🏳️ Setting game state to gameOver");
+		console.log("🏳️ About to set game state to gameOver");
 		setGameState("gameOver");
+		console.log("🏳️ setGameState called");
 		
 		// CRITICAL FIX: Stop any playing audio
 		if (audioRef.current) {
@@ -1032,7 +1040,7 @@ export function GuessifyGame() {
 			// Note: The provider doesn't have a removeListener method, so we rely on the provider's cleanup
 			// This effect should only run once on mount
 		};
-	}, [onSnippetStart, onSnippetEnd]); // Remove gameState dependency
+	}, []); // CRITICAL FIX: Remove dependencies to prevent effect from re-running
 
 	// Debug state changes
 	useEffect(() => {
