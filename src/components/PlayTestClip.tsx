@@ -409,6 +409,12 @@ export function GuessifyGame() {
 	}, []);
 
 	const startNewRound = useCallback(async () => {
+		// Check if user is signed in
+		if (!userProfile) {
+			alert("Please sign in to Spotify first to play Guessify!");
+			return;
+		}
+
 		console.log("PlayTestClip: startNewRound called", { 
 			tracksLength: tracks.length, 
 			isSdkAvailable, 
@@ -481,7 +487,7 @@ export function GuessifyGame() {
 		if (track.previewUrl) {
 			void preloadAudio(track);
 		}
-	}, [tracks, loading, error, loadAll, hasStartedGame, preloadAudio, pause]);
+	}, [tracks, loading, error, loadAll, hasStartedGame, preloadAudio, pause, userProfile]);
 
 	// CRITICAL FIX: New function that takes a specific level parameter
 	const playCurrentLevelWithLevel = useCallback(async (specificLevel?: any) => {
@@ -742,8 +748,14 @@ export function GuessifyGame() {
 
 	// CRITICAL FIX: Use the new function that handles level parameters properly
 	const playCurrentLevel = useCallback(async () => {
+		// Check if user is signed in
+		if (!userProfile) {
+			alert("Please sign in to Spotify first to play Guessify!");
+			return;
+		}
+		
 		await playCurrentLevelWithLevel();
-	}, [playCurrentLevelWithLevel]);
+	}, [playCurrentLevelWithLevel, userProfile]);
 
 	const nextLevel = useCallback(() => {
 		if (!currentRound) return;
@@ -1583,18 +1595,7 @@ export function GuessifyGame() {
 						<div className="w-2 h-8 bg-gradient-to-t from-yellow-400 to-yellow-600 rounded-full animate-pulse" style={{ animationDelay: '800ms' }}></div>
 					</div>
 					
-					{/* Floating Achievement Badges */}
-					<div className="flex items-center justify-center space-x-4">
-						<div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 backdrop-blur-sm p-3 rounded-full border border-green-500/30 transform hover:scale-110 transition-all duration-300">
-							<span className="text-2xl">🏆</span>
-						</div>
-						<div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 backdrop-blur-sm p-3 rounded-full border border-blue-500/30 transform hover:scale-110 transition-all duration-300">
-							<span className="text-2xl">🎯</span>
-						</div>
-						<div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur-sm p-3 rounded-full border border-purple-500/30 transform hover:scale-110 transition-all duration-300">
-							<span className="text-2xl">⚡</span>
-						</div>
-					</div>
+					{/* REMOVED: Achievement badges that don't serve a functional purpose */}
 					
 					{/* Dynamic Stats Display */}
 					<div className="bg-gradient-to-r from-white/10 to-white/5 backdrop-blur-sm p-4 rounded-xl border border-white/20">
